@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from .llm_async import (
+from .async_client import (
     AsyncLLMResponse,
     call_deepseek_async,
 )
@@ -238,7 +238,7 @@ async def call_model_by_provider(
         try:
             import asyncio
 
-            from .llm_gemini import call_model as call_gemini_sync
+            from .gemini import call_model as call_gemini_sync
             
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(

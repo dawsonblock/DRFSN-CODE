@@ -71,7 +71,7 @@ async def call_deepseek_async(
     timeout: float = DEFAULT_TIMEOUT,
 ) -> AsyncLLMResponse:
     """Delegate to llm_deepseek.call_model_async."""
-    from .llm_deepseek import call_model_async as ds_call
+    from .deepseek import call_model_async as ds_call
     
     start = time.time()
     try:
@@ -100,7 +100,7 @@ async def call_gemini_async(
     timeout: float = DEFAULT_TIMEOUT,
 ) -> AsyncLLMResponse:
     """Delegate to llm_gemini.call_model_async."""
-    from .llm_gemini import call_model_async as gem_call
+    from .gemini import call_model_async as gem_call
     
     start = time.time()
     try:
@@ -169,7 +169,7 @@ async def call_deepseek_streaming(
     system_prompt: Optional[str] = None,
 ) -> AsyncIterator[str]:
     """Delegate to llm_deepseek.call_model_streaming."""
-    from .llm_deepseek import call_model_streaming as ds_stream
+    from .deepseek import call_model_streaming as ds_stream
     
     async for chunk in ds_stream(prompt, temperature):
         yield chunk
@@ -182,7 +182,7 @@ async def call_gemini_streaming(
     system_prompt: Optional[str] = None,
 ) -> AsyncIterator[str]:
     """Delegate to llm_gemini.call_model_streaming."""
-    from .llm_gemini import call_model_streaming as gem_stream
+    from .gemini import call_model_streaming as gem_stream
     
     async for chunk in gem_stream(prompt, temperature):
         yield chunk

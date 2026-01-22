@@ -37,7 +37,7 @@ from .buildpacks import (
 from .clock import FrozenClock, SystemClock, make_run_id, parse_utc_iso
 from .evidence_pack import EvidencePackConfig, EvidencePackExporter
 from .goals import DEFAULT_FEATURE_SUBGOALS
-from .llm_ensemble import call_ensemble_sync
+from .llm import call_ensemble_sync
 from .log import write_jsonl
 from .parallel import evaluate_patches_parallel, find_first_successful_patch
 from .parsers import normalize_test_path, parse_trace_files

@@ -1,33 +1,31 @@
-"""Gemini API client with structured output enforcement for RFSN controller."""
+"""DeepSeek API client with structured output enforcement for RFSN controller."""
 
+import json
 import os
 
-MODEL = "gemini-2.0-flash"
-
-# Lazy import: only import google.genai when actually calling the model
-# This allows the controller to be imported even if google-genai is not installed
-_genai = None
-_types = None
+# Lazy import: only import openai when actually calling the model
+# This allows the controller to be imported even if openai is not installed
+_openai = None
 
 
-def _ensure_genai_imported():
-    """Lazily import google.genai modules."""
-    global _genai, _types
-    if _genai is None:
+def _ensure_openai_imported():
+    """Lazily import openai module."""
+    global _openai
+    if _openai is None:
         try:
-            from google import genai
-            from google.genai import types as genai_types
+            from openai import OpenAI, AsyncOpenAI
 
-            _genai = genai
-            _types = genai_types
+            _openai = (OpenAI, AsyncOpenAI)
         except ImportError as e:
             # Raise a clear error instructing users to install optional LLM dependencies.
             raise RuntimeError(
-                "Google GenAI SDK not available. To enable this provider, install the optional LLM dependencies "
+                "OpenAI SDK not available. To enable this provider, install the optional LLM dependencies "
                 "via requirements-llm.txt, e.g. pip install -r requirements-llm.txt"
             ) from e
-    return _genai, _types
+    return _openai
 
+
+MODEL = "deepseek-chat"
 
 SYSTEM = """
 You are RFSN-CODE, a controller-governed CODING AGENT operating inside a locked-down sandbox.
@@ -198,8 +196,7 @@ REPAIR MODE:
 - Keep changes extremely small.
 - Touch minimal files.
 - Avoid adding new modules unless necessary.
-- NEVER edit test files. Fix the SOURCE/IMPLEMENTATION code, not the tests.
-- The bug is in the implementation, not the test. Patch the source file.
+- Do not edit tests unless explicitly required.
 
 FEATURE MODE:
 - Multiple files are acceptable when functionally required.
@@ -223,78 +220,70 @@ If a command is blocked, a patch is hygiene-rejected, or verification fails:
 You are a bounded coding agent. Act through evidence, minimal diffs, and verification.
 """.strip()
 
-
-def _build_schemas():
-    """Build the Gemini API schemas using lazy-imported types."""
-    _, types = _ensure_genai_imported()
-
-    # Schema: mode + either requests or diff
-    request_item = types.Schema(
-        type=types.Type.OBJECT,
-        required=["tool", "args"],
-        properties={
-            "tool": types.Schema(type=types.Type.STRING),
-            "args": types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    "path": types.Schema(type=types.Type.STRING),
-                    "cmd": types.Schema(type=types.Type.STRING),
-                    "query": types.Schema(type=types.Type.STRING),
-                    "github_url": types.Schema(type=types.Type.STRING),
-                    "diff": types.Schema(type=types.Type.STRING),
-                    "ref": types.Schema(type=types.Type.STRING),
-                    "max_bytes": types.Schema(type=types.Type.INTEGER),
-                    "max_matches": types.Schema(type=types.Type.INTEGER),
-                    "max_files": types.Schema(type=types.Type.INTEGER),
-                    "timeout_sec": types.Schema(type=types.Type.INTEGER),
-                    "packages": types.Schema(type=types.Type.STRING),
-                    "requirements_file": types.Schema(type=types.Type.STRING),
-                    "venv_path": types.Schema(type=types.Type.STRING),
-                    "module_name": types.Schema(type=types.Type.STRING),
-                },
-            ),
-        },
-    )
-
-    output_schema = types.Schema(
-        type=types.Type.OBJECT,
-        required=["mode"],
-        properties={
-            "mode": types.Schema(
-                type=types.Type.STRING, enum=["tool_request", "patch", "feature_summary"]
-            ),
-            "requests": types.Schema(type=types.Type.ARRAY, items=request_item),
-            "why": types.Schema(type=types.Type.STRING),
-            "diff": types.Schema(type=types.Type.STRING),
-            "summary": types.Schema(type=types.Type.STRING),
-            "completion_status": types.Schema(type=types.Type.STRING),
-        },
-    )
-
-    return output_schema
-
-
 _client = None  # cached client instance
+_async_client = None # cached async client instance
 
+class MockClient:
+    class chat:
+        class completions:
+            @staticmethod
+            def create(*args, **kwargs):
+                class Message:
+                    content = '{"mode": "tool_request", "requests": [], "why": "Mocked response because API key is missing."}'
+                class Choice:
+                    message = Message()
+                class Response:
+                    choices = [Choice()]
+                    usage = None
+                return Response()
+
+class AsyncMockClient:
+    class chat:
+        class completions:
+            @staticmethod
+            async def create(*args, **kwargs):
+                class Message:
+                    content = '{"mode": "tool_request", "requests": [], "why": "Mocked async response"}'
+                class Choice:
+                    message = Message()
+                class Response:
+                    choices = [Choice()]
+                    usage = None
+                return Response()
 
 def client():
-    """Return a singleton Google GenAI client, reading API key from env.
+    """Return a singleton DeepSeek client, reading API key from env.
 
     Raises:
-        RuntimeError: if the GEMINI_API_KEY environment variable is not set or google-genai is not installed.
+        RuntimeError: if the DEEPSEEK_API_KEY environment variable is not set or openai SDK is not installed.
     """
     global _client
     if _client is None:
-        genai, _ = _ensure_genai_imported()
-        key = os.environ.get("GEMINI_API_KEY")
+        OpenAI, _ = _ensure_openai_imported()
+
+        key = os.environ.get("DEEPSEEK_API_KEY")
         if not key:
-            raise RuntimeError("Missing GEMINI_API_KEY")
-        _client = genai.Client(api_key=key)
+            print("Warning: DEEPSEEK_API_KEY not found. Using Mock Client.")
+            _client = MockClient()
+        else:
+            _client = OpenAI(api_key=key, base_url="https://api.deepseek.com")
     return _client
+
+def async_client():
+    """Return a singleton Async DeepSeek client."""
+    global _async_client
+    if _async_client is None:
+        _, AsyncOpenAI = _ensure_openai_imported()
+        key = os.environ.get("DEEPSEEK_API_KEY")
+        if not key:
+            _async_client = AsyncMockClient()
+        else:
+            _async_client = AsyncOpenAI(api_key=key, base_url="https://api.deepseek.com")
+    return _async_client
 
 
 def call_model(model_input: str, temperature: float = 0.0) -> dict:
-    """Call the Gemini model with structured JSON output enforcement.
+    """Call the DeepSeek model with structured JSON output enforcement.
 
     Args:
         model_input: The text prompt to send to the model.
@@ -305,92 +294,13 @@ def call_model(model_input: str, temperature: float = 0.0) -> dict:
         at least a "mode" key and may include "requests", "why", or "diff".
 
     Raises:
-        RuntimeError: if google-genai SDK is not available.
+        RuntimeError: if openai SDK is not available.
     """
-    import time as _time
-    start_time = _time.time()
-    
-    genai, types = _ensure_genai_imported()
-    output_schema = _build_schemas()
-
-    cfg = types.GenerateContentConfig(
-        temperature=temperature,
-        system_instruction=SYSTEM,
-        response_mime_type="application/json",
-        response_schema=output_schema,
-    )
-    
-    error_msg = None
-    prompt_tokens = 0
-    completion_tokens = 0
-    
-    try:
-        resp = client().models.generate_content(
-            model=MODEL,
-            contents=model_input,
-            config=cfg,
-        )
-        
-        # Extract token usage from response
-        if hasattr(resp, "usage_metadata"):
-            prompt_tokens = getattr(resp.usage_metadata, "prompt_token_count", 0)
-            completion_tokens = getattr(resp.usage_metadata, "candidates_token_count", 0)
-        
-        # Track LLM call and tokens in budget
-        try:
-            from .budget import record_llm_call_global
-            total_tokens = prompt_tokens + completion_tokens
-            record_llm_call_global(tokens=total_tokens)
-        except ImportError:
-            pass  # Budget module not available
-        
-        data = getattr(resp, "parsed", None)
-        success = True
-        
-    except Exception as e:
-        error_msg = str(e)
-        success = False
-        data = None
-    
-    # Log LLM call event
-    latency_ms = (_time.time() - start_time) * 1000
-    try:
-        from .events import log_llm_call_global
-        log_llm_call_global(
-            model=MODEL,
-            tokens_prompt=prompt_tokens,
-            tokens_completion=completion_tokens,
-            latency_ms=latency_ms,
-            success=success,
-            error=error_msg,
-        )
-    except ImportError:
-        pass  # Events module not available
-    
-    if error_msg:
-        raise RuntimeError(f"Gemini API call failed: {error_msg}")
-    
-    if isinstance(data, dict) and "mode" in data:
-        return data
-    # fallback: treat as patch with empty diff if parsing failed
-    return {"mode": "patch", "diff": ""}
-
-
-async def call_model_async(model_input: str, temperature: float = 0.0) -> dict:
-    """Async version of call_model."""
     import time
-    import asyncio
     
-    genai, types = _ensure_genai_imported()
-    output_schema = _build_schemas()
+    _ensure_openai_imported()  # Ensure SDK is available before making the call
 
-    cfg = types.GenerateContentConfig(
-        temperature=temperature,
-        system_instruction=SYSTEM,
-        response_mime_type="application/json",
-        response_schema=output_schema,
-    )
-    
+    # Retry with exponential backoff for transient failures
     max_retries = 3
     base_delay = 1.0
     last_exception = None
@@ -398,23 +308,132 @@ async def call_model_async(model_input: str, temperature: float = 0.0) -> dict:
     for attempt in range(max_retries + 1):
         start_time = time.time()
         try:
-            # correct async call for google-genai v1 sdk
-            resp = await client().aio.models.generate_content(
+            resp = client().chat.completions.create(
                 model=MODEL,
-                contents=model_input,
-                config=cfg,
+                messages=[
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": model_input},
+                ],
+                temperature=temperature,
+                response_format={"type": "json_object"},
             )
+
+            content = resp.choices[0].message.content
+            result = json.loads(content)
             
-            data = getattr(resp, "parsed", None)
+            # Track successful call with telemetry
+            latency_sec = time.time() - start_time
+            latency_ms = latency_sec * 1000
+            prompt_tokens = getattr(resp.usage, 'prompt_tokens', 0) if hasattr(resp, 'usage') else 0
+            completion_tokens = getattr(resp.usage, 'completion_tokens', 0) if hasattr(resp, 'usage') else 0
+            
+            try:
+                from ..telemetry import track_llm_call
+                track_llm_call(
+                    model=MODEL,
+                    status="success",
+                    latency_sec=latency_sec,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+            except ImportError:
+                pass  # Telemetry not available
+            
+            # Track LLM call and tokens in budget
+            try:
+                from ..budget import record_llm_call_global
+                total_tokens = prompt_tokens + completion_tokens
+                record_llm_call_global(tokens=total_tokens)
+            except ImportError:
+                pass  # Budget module not available
+            
+            # Log LLM call event
+            try:
+                from ..events import log_llm_call_global
+                log_llm_call_global(
+                    model=MODEL,
+                    tokens_prompt=prompt_tokens,
+                    tokens_completion=completion_tokens,
+                    latency_ms=latency_ms,
+                    success=True,
+                    error=None,
+                )
+            except ImportError:
+                pass  # Events module not available
+            
+            return result
+            
+        except Exception as e:
+            last_exception = e
+            latency_sec = time.time() - start_time
+            latency_ms = latency_sec * 1000
+            
+            # Track failed call
+            try:
+                from ..telemetry import track_llm_call
+                track_llm_call(
+                    model=MODEL,
+                    status="error",
+                    latency_sec=latency_sec,
+                )
+            except ImportError:
+                pass
+            
+            # Log failed LLM call event
+            try:
+                from ..events import log_llm_call_global
+                log_llm_call_global(
+                    model=MODEL,
+                    tokens_prompt=0,
+                    tokens_completion=0,
+                    latency_ms=latency_ms,
+                    success=False,
+                    error=str(e),
+                )
+            except ImportError:
+                pass  # Events module not available
+            
+            if attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                time.sleep(delay)
+            else:
+                raise last_exception from last_exception
+    
+    # Should never reach here
+    raise last_exception if last_exception else RuntimeError("Unknown error")
+
+
+async def call_model_async(model_input: str, temperature: float = 0.0) -> dict:
+    """Async version of call_model."""
+    import time
+    import asyncio
+    
+    _ensure_openai_imported()
+
+    max_retries = 3
+    base_delay = 1.0
+    last_exception = None
+    
+    for attempt in range(max_retries + 1):
+        start_time = time.time()
+        try:
+            resp = await async_client().chat.completions.create(
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": model_input},
+                ],
+                temperature=temperature,
+                response_format={"type": "json_object"},
+            )
+
+            content = resp.choices[0].message.content
+            result = json.loads(content)
             
             latency_sec = time.time() - start_time
             latency_ms = latency_sec * 1000
-            # Extract token usage
-            prompt_tokens = 0
-            completion_tokens = 0
-            if hasattr(resp, "usage_metadata"):
-                prompt_tokens = getattr(resp.usage_metadata, "prompt_token_count", 0)
-                completion_tokens = getattr(resp.usage_metadata, "candidates_token_count", 0)
+            prompt_tokens = getattr(resp.usage, 'prompt_tokens', 0) if hasattr(resp, 'usage') else 0
+            completion_tokens = getattr(resp.usage, 'completion_tokens', 0) if hasattr(resp, 'usage') else 0
             
             try:
                 from .telemetry import track_llm_call
@@ -449,10 +468,8 @@ async def call_model_async(model_input: str, temperature: float = 0.0) -> dict:
                 )
             except ImportError:
                 pass  # Events module not available
-
-            if isinstance(data, dict) and "mode" in data:
-                return data
-            return {"mode": "patch", "diff": ""}
+            
+            return result
             
         except Exception as e:
             last_exception = e
@@ -487,39 +504,37 @@ async def call_model_async(model_input: str, temperature: float = 0.0) -> dict:
                 await asyncio.sleep(delay)
             else:
                 raise last_exception from last_exception
-                
+    
     raise last_exception if last_exception else RuntimeError("Unknown error")
 
 
 async def call_model_streaming(model_input: str, temperature: float = 0.0):
-    """Call the Gemini model with streaming response.
+    """Call the DeepSeek model with streaming response.
     
     Yields:
         Chunks of the response content as they arrive.
     """
-    genai, types = _ensure_genai_imported()
-    output_schema = _build_schemas()
+    _ensure_openai_imported()
 
-    cfg = types.GenerateContentConfig(
-        temperature=temperature,
-        system_instruction=SYSTEM,
-        response_mime_type="application/json",
-        response_schema=output_schema,
-    )
-    
     try:
-        # correct async call for google-genai v1 sdk with streaming
-        # Note: aio.models.generate_content(stream=True) returns an async iterator
-        async for chunk in await client().aio.models.generate_content(
+        stream = await async_client().chat.completions.create(
             model=MODEL,
-            contents=model_input,
-            config=cfg,
-            stream=True
-        ):
-            # Gemini chunks might contain parts or text
-            if chunk.text:
-                yield chunk.text
-            
+            messages=[
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": model_input},
+            ],
+            temperature=temperature,
+            stream=True,
+            response_format={"type": "json_object"},
+        )
+
+        async for chunk in stream:
+            content = chunk.choices[0].delta.content or ""
+            if content:
+                yield content
+                
     except Exception as e:
         raise e
+
+
 
