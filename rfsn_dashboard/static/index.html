@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RFSN Controller | Command Center</title>
+    <meta name="description" content="RFSN Controller Dashboard - Autonomous AI Code Repair & Feature Generation">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        surface: {
+                            50: '#f8fafc',
+                            100: '#f1f5f9',
+                            800: '#1e293b',
+                            850: '#172033',
+                            900: '#0f172a',
+                            950: '#080d1a',
+                        },
+                        accent: {
+                            cyan: '#00f5ff',
+                            purple: '#bf5af2',
+                            pink: '#ff2d92',
+                            blue: '#0a84ff',
+                            green: '#30d158',
+                            orange: '#ff9f0a',
+                            red: '#ff453a',
+                            yellow: '#ffd60a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+                    },
+                    animation: {
+                        'glow-pulse': 'glowPulse 2s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-in': 'slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                        'thinking': 'thinking 1.5s ease-in-out infinite',
+                        'orbit': 'orbit 3s linear infinite',
+                        'typing': 'typing 1.5s steps(3) infinite',
+                        'wave': 'wave 1.2s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        glowPulse: {
+                            '0%, 100%': { opacity: '0.4' },
+                            '50%': { opacity: '1' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(8px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        slideIn: {
+                            '0%': { opacity: '0', transform: 'translateX(-12px)' },
+                            '100%': { opacity: '1', transform: 'translateX(0)' },
+                        },
+                        thinking: {
+                            '0%, 100%': { transform: 'scale(1)', opacity: '0.5' },
+                            '50%': { transform: 'scale(1.1)', opacity: '1' },
+                        },
+                        orbit: {
+                            '0%': { transform: 'rotate(0deg)' },
+                            '100%': { transform: 'rotate(360deg)' },
+                        },
+                        typing: {
+                            '0%': { content: '"."' },
+                            '33%': { content: '".."' },
+                            '66%': { content: '"..."' },
+                        },
+                        wave: {
+                            '0%, 100%': { transform: 'scaleY(0.5)' },
+                            '50%': { transform: 'scaleY(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: #050810;
+        }
+
+        .bg-mesh {
+            background-image:
+                radial-gradient(at 0% 0%, rgba(0, 245, 255, 0.08) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(191, 90, 242, 0.08) 0px, transparent 50%),
+                radial-gradient(at 50% 100%, rgba(10, 132, 255, 0.05) 0px, transparent 50%);
+        }
+
+        .glass {
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .glass-subtle {
+            background: rgba(15, 23, 42, 0.3);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .glow-cyan {
+            box-shadow: 0 0 40px rgba(0, 245, 255, 0.15);
+        }
+
+        .glow-purple {
+            box-shadow: 0 0 40px rgba(191, 90, 242, 0.15);
+        }
+
+        .border-glow {
+            position: relative;
+        }
+
+        .border-glow::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(0, 245, 255, 0.4), rgba(191, 90, 242, 0.4), rgba(0, 245, 255, 0.4));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+        }
+
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .tab-active {
+            background: linear-gradient(135deg, rgba(0, 245, 255, 0.1), rgba(191, 90, 242, 0.1));
+            border-color: rgba(0, 245, 255, 0.3);
+        }
+
+        .ai-orb {
+            background: radial-gradient(circle at 30% 30%, rgba(0, 245, 255, 0.8), rgba(191, 90, 242, 0.6), rgba(10, 132, 255, 0.4));
+        }
+
+        .ai-ring {
+            border: 2px solid rgba(0, 245, 255, 0.3);
+            animation: orbit 4s linear infinite;
+        }
+
+        .ai-ring-2 {
+            border: 1px solid rgba(191, 90, 242, 0.2);
+            animation: orbit 6s linear infinite reverse;
+        }
+
+        .thinking-dot {
+            animation: wave 1.2s ease-in-out infinite;
+        }
+
+        .thinking-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .thinking-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        .step-line {
+            background: linear-gradient(to bottom, rgba(0, 245, 255, 0.5), transparent);
+        }
+
+        @keyframes shimmer {
+            0% {
+                background-position: -200% 0;
+            }
+
+            100% {
+                background-position: 200% 0;
+            }
+        }
+
+        .shimmer {
+            background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, 0.05) 50%, transparent 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+
+        .input-modern {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.2s ease;
+        }
+
+        .input-modern:focus {
+            border-color: rgba(0, 245, 255, 0.5);
+            box-shadow: 0 0 0 3px rgba(0, 245, 255, 0.1);
+        }
+
+        .btn-glow {
+            background: linear-gradient(135deg, #00f5ff, #bf5af2);
+            transition: all 0.3s ease;
+        }
+
+        .btn-glow:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 245, 255, 0.4);
+        }
+
+        .btn-glow:active {
+            transform: translateY(0);
+        }
+
+        .btn-glow:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+    </style>
+</head>
+
+<body class="text-slate-100 min-h-screen font-sans antialiased overflow-hidden flex flex-col bg-mesh">
+
+    <div id="app" class="flex flex-col h-screen">
+
+        <!-- Header -->
+        <header class="glass h-14 flex items-center justify-between px-5 shrink-0 z-50 border-b border-white/5">
+            <div class="flex items-center gap-6">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div
+                        class="w-9 h-9 rounded-xl ai-orb flex items-center justify-center font-black text-white text-sm shadow-lg relative">
+                        R
+                        <div class="absolute inset-0 rounded-xl animate-glow-pulse"
+                            style="box-shadow: 0 0 20px rgba(0, 245, 255, 0.5)"></div>
+                    </div>
+                    <div class="leading-tight">
+                        <h1 class="text-base font-bold tracking-tight text-white">RFSN</h1>
+                        <p class="text-[10px] text-slate-500 uppercase tracking-widest">Controller</p>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <nav class="flex items-center gap-1 ml-4">
+                    <button v-for="tab in tabs" :key="tab.id" @click="activeTab = tab.id"
+                        :class="activeTab === tab.id ? 'tab-active text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'"
+                        class="px-4 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-2 border border-transparent">
+                        <span v-html="tab.icon"></span>
+                        {{ tab.name }}
+                    </button>
+                </nav>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Status Badge -->
+                <div :class="wsConnected ? 'bg-accent-green/10 text-accent-green border-accent-green/30' : 'bg-accent-red/10 text-accent-red border-accent-red/30'"
+                    class="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border flex items-center gap-2 transition-all">
+                    <span :class="wsConnected ? 'bg-accent-green' : 'bg-accent-red'" class="w-1.5 h-1.5 rounded-full"
+                        :style="wsConnected ? 'box-shadow: 0 0 6px #30d158' : ''"></span>
+                    {{ wsConnected ? 'Live' : 'Offline' }}
+                </div>
+
+                <!-- Settings -->
+                <button @click="showConfig = !showConfig"
+                    class="p-2 rounded-lg hover:bg-white/5 text-slate-400 hover:text-white transition-all">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="flex flex-1 overflow-hidden relative">
+
+            <!-- Config Drawer -->
+            <transition enter-active-class="transition duration-300 ease-out" enter-from-class="translate-x-full"
+                enter-to-class="translate-x-0" leave-active-class="transition duration-200"
+                leave-from-class="translate-x-0" leave-to-class="translate-x-full">
+                <div v-if="showConfig"
+                    class="absolute right-0 top-0 bottom-0 w-80 glass border-l border-white/5 shadow-2xl z-40 flex flex-col">
+                    <div class="p-5 border-b border-white/5 flex justify-between items-center">
+                        <h2 class="text-sm font-bold text-white">Settings</h2>
+                        <button @click="showConfig = false"
+                            class="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="flex-1 p-5 space-y-4 overflow-y-auto scrollbar-thin">
+                        <div v-for="(val, key) in config" :key="key">
+                            <label class="block text-[10px] uppercase font-bold text-slate-500 mb-1.5 tracking-wider">{{
+                                formatKey(key) }}</label>
+                            <input type="password" v-model="configForm[key]" :placeholder="val || 'Not set'"
+                                class="w-full input-modern rounded-lg px-3 py-2 text-xs text-white outline-none font-mono">
+                        </div>
+                    </div>
+                    <div class="p-5 border-t border-white/5">
+                        <button @click="saveConfig" :disabled="saving"
+                            class="w-full btn-glow text-black font-bold py-2.5 rounded-lg text-sm disabled:opacity-40">
+                            {{ saving ? 'Saving...' : 'Save' }}
+                        </button>
+                    </div>
+                </div>
+            </transition>
+
+            <!-- Dashboard Tab -->
+            <div v-show="activeTab === 'dashboard'" class="flex-1 flex overflow-hidden animate-fade-in">
+
+                <!-- Left Panel -->
+                <div class="w-80 border-r border-white/5 flex flex-col overflow-y-auto scrollbar-thin shrink-0">
+
+                    <!-- Run Launcher -->
+                    <div class="p-5 border-b border-white/5">
+                        <div class="flex items-center gap-2 mb-4">
+                            <div class="w-6 h-6 rounded-lg bg-accent-cyan/10 flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                                    fill="currentColor" class="text-accent-cyan">
+                                    <polygon points="5 3 19 12 5 21 5 3" />
+                                </svg>
+                            </div>
+                            <span class="text-xs font-bold text-white uppercase tracking-wider">Launch</span>
+                        </div>
+
+                        <div class="space-y-3">
+                            <input type="url" v-model="runConfig.repoUrl" placeholder="github.com/owner/repo"
+                                class="w-full input-modern rounded-lg px-3 py-2.5 text-xs text-white outline-none font-mono placeholder-slate-600">
+                            <input type="text" v-model="runConfig.testCmd" placeholder="pytest -q (auto)"
+                                class="w-full input-modern rounded-lg px-3 py-2.5 text-xs text-white outline-none font-mono placeholder-slate-600">
+
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 mb-1">Steps</label>
+                                    <input type="number" v-model.number="runConfig.maxSteps" min="1" max="50"
+                                        class="w-full input-modern rounded-lg px-3 py-2 text-xs text-white outline-none font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] text-slate-500 mb-1">Planner</label>
+                                    <select v-model="runConfig.plannerMode"
+                                        class="w-full input-modern rounded-lg px-3 py-2 text-xs text-white outline-none">
+                                        <option value="off">Off</option>
+                                        <option value="dag">DAG</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-2">
+                                <button @click="launchRun"
+                                    :disabled="!runConfig.repoUrl || launching || stats.phase === 'RUNNING'"
+                                    class="flex-1 btn-glow text-black font-bold py-2.5 rounded-lg text-xs flex items-center justify-center gap-2 disabled:opacity-40">
+                                    <svg v-if="!launching" xmlns="http://www.w3.org/2000/svg" width="12" height="12"
+                                        viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3" />
+                                    </svg>
+                                    <span v-else
+                                        class="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin"></span>
+                                    {{ launching ? 'Starting...' : 'Launch' }}
+                                </button>
+                                <button @click="stopRun" :disabled="stats.phase !== 'RUNNING' || stopping"
+                                    class="px-4 py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
+                                    :class="stats.phase === 'RUNNING' ? 'bg-accent-red/20 text-accent-red hover:bg-accent-red/30 border border-accent-red/30' : 'bg-white/5 text-slate-500 cursor-not-allowed'">
+                                    <svg v-if="!stopping" xmlns="http://www.w3.org/2000/svg" width="10" height="10"
+                                        viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="6" width="12" height="12" rx="1" />
+                                    </svg>
+                                    <span v-else
+                                        class="w-3 h-3 border-2 border-accent-red/30 border-t-accent-red rounded-full animate-spin"></span>
+                                    {{ stopping ? '...' : 'Stop' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="p-5 border-b border-white/5">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</span>
+                            <span class="text-[10px] font-mono text-slate-600">{{ stats.runId ? '#' +
+                                shortId(stats.runId) : '—' }}</span>
+                        </div>
+                        <div class="text-2xl font-bold text-white mb-3">{{ stats.phase }}</div>
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-[10px] text-slate-500">
+                                <span>Progress</span>
+                                <span class="font-mono">{{ stats.step }}/{{ stats.maxSteps }}</span>
+                            </div>
+                            <div class="h-1 bg-black/30 rounded-full overflow-hidden">
+                                <div class="h-full rounded-full transition-all duration-700"
+                                    :style="{ width: progressPercent + '%', background: 'linear-gradient(90deg, #00f5ff, #bf5af2)' }">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Metrics -->
+                    <div class="p-5 grid grid-cols-2 gap-2">
+                        <div class="glass-subtle rounded-xl p-3">
+                            <div class="text-[10px] text-slate-500 mb-0.5">Patches</div>
+                            <div class="text-lg font-bold text-white">{{ stats.patchesTried }}</div>
+                        </div>
+                        <div class="glass-subtle rounded-xl p-3">
+                            <div class="text-[10px] text-slate-500 mb-0.5">Success</div>
+                            <div class="text-lg font-bold"
+                                :class="stats.successRate >= 50 ? 'text-accent-green' : 'text-accent-red'">{{
+                                stats.successRate }}%</div>
+                        </div>
+                        <div class="glass-subtle rounded-xl p-3">
+                            <div class="text-[10px] text-slate-500 mb-0.5">Cost</div>
+                            <div class="text-lg font-bold text-accent-green">${{ stats.cost.toFixed(2) }}</div>
+                        </div>
+                        <div class="glass-subtle rounded-xl p-3">
+                            <div class="text-[10px] text-slate-500 mb-0.5">Tokens</div>
+                            <div class="text-lg font-bold text-accent-purple">{{ formatNumber(stats.tokens) }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Console -->
+                <div class="flex-1 flex flex-col min-w-0 bg-black/20">
+                    <div class="h-10 border-b border-white/5 flex items-center justify-between px-4 shrink-0">
+                        <div class="flex items-center gap-2">
+                            <div class="flex gap-1">
+                                <div class="w-2.5 h-2.5 rounded-full bg-accent-red/80"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-accent-orange/80"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-accent-green/80"></div>
+                            </div>
+                            <span
+                                class="text-[10px] font-medium text-slate-500 uppercase tracking-wider ml-2">Console</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <button @click="downloadLogs" title="Download Logs"
+                                class="p-1.5 rounded hover:bg-white/5 text-slate-500 hover:text-accent-cyan transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                                </svg>
+                            </button>
+                            <button @click="clearLogs" title="Clear Logs"
+                                class="p-1.5 rounded hover:bg-white/5 text-slate-500 hover:text-accent-red transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div ref="consoleRef"
+                        class="flex-1 overflow-y-auto p-4 scrollbar-thin font-mono text-xs space-y-0.5">
+                        <div v-if="logs.length === 0" class="flex items-center justify-center h-full text-slate-700">
+                            <span>Awaiting activity...</span>
+                        </div>
+                        <div v-for="(log, idx) in logs" :key="idx"
+                            class="py-0.5 animate-fade-in hover:bg-white/3 px-2 -mx-2 rounded leading-relaxed">
+                            <span class="text-slate-600 mr-2 select-none">{{ log.time }}</span>
+                            <span :class="logClass(log.type)" v-html="log.msg"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Tab -->
+            <div v-show="activeTab === 'ai'" class="flex-1 flex overflow-hidden animate-fade-in">
+                <div class="flex-1 flex">
+
+                    <!-- AI Visualization -->
+                    <div class="flex-1 flex flex-col items-center justify-center relative overflow-hidden">
+
+                        <!-- Background Effects -->
+                        <div class="absolute inset-0 overflow-hidden">
+                            <div
+                                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full bg-accent-cyan/5 blur-3xl">
+                            </div>
+                            <div
+                                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-accent-purple/5 blur-3xl">
+                            </div>
+                        </div>
+
+                        <!-- Central AI Orb -->
+                        <div class="relative">
+                            <!-- Outer rings -->
+                            <div class="absolute inset-0 -m-20 ai-ring rounded-full"></div>
+                            <div class="absolute inset-0 -m-32 ai-ring-2 rounded-full"></div>
+                            <div class="absolute inset-0 -m-44 ai-ring rounded-full"
+                                style="animation-duration: 8s; opacity: 0.3"></div>
+
+                            <!-- Main orb -->
+                            <div class="w-32 h-32 rounded-full ai-orb relative flex items-center justify-center"
+                                :class="isAiThinking ? 'animate-thinking' : ''">
+                                <div class="absolute inset-0 rounded-full"
+                                    :style="isAiThinking ? 'box-shadow: 0 0 60px rgba(0, 245, 255, 0.6)' : 'box-shadow: 0 0 30px rgba(0, 245, 255, 0.3)'">
+                                </div>
+                                <span class="text-3xl font-black text-white relative z-10">AI</span>
+                            </div>
+
+                            <!-- Thinking indicator -->
+                            <div v-if="isAiThinking"
+                                class="absolute -bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+                                <div class="w-2 h-4 bg-accent-cyan rounded-full thinking-dot"></div>
+                                <div class="w-2 h-5 bg-accent-cyan rounded-full thinking-dot"></div>
+                                <div class="w-2 h-4 bg-accent-cyan rounded-full thinking-dot"></div>
+                            </div>
+                        </div>
+
+                        <!-- Status Text -->
+                        <div class="mt-20 text-center relative z-10">
+                            <div class="text-lg font-bold text-white mb-1">{{ aiStatus.action || 'Ready' }}</div>
+                            <div class="text-xs text-slate-500">{{ aiStatus.detail || 'Waiting for controller activity'
+                                }}</div>
+                        </div>
+
+                        <!-- Current Tool -->
+                        <div v-if="aiStatus.tool"
+                            class="mt-8 glass-subtle rounded-xl px-6 py-4 border-glow relative z-10">
+                            <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Current Tool</div>
+                            <div class="text-sm font-mono text-accent-cyan">{{ aiStatus.tool }}</div>
+                        </div>
+                    </div>
+
+                    <!-- AI Activity Feed -->
+                    <div class="w-96 border-l border-white/5 flex flex-col">
+                        <div class="h-10 border-b border-white/5 flex items-center px-4">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Activity
+                                Feed</span>
+                        </div>
+                        <div class="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3">
+                            <div v-if="aiSteps.length === 0"
+                                class="flex items-center justify-center h-full text-slate-700 text-xs">
+                                No activity yet
+                            </div>
+                            <div v-for="(step, idx) in aiSteps" :key="idx" class="animate-slide-in">
+                                <div class="flex gap-3">
+                                    <!-- Timeline -->
+                                    <div class="flex flex-col items-center">
+                                        <div :class="step.status === 'running' ? 'bg-accent-cyan animate-pulse' : step.status === 'success' ? 'bg-accent-green' : step.status === 'error' ? 'bg-accent-red' : 'bg-slate-600'"
+                                            class="w-2 h-2 rounded-full shrink-0"></div>
+                                        <div v-if="idx < aiSteps.length - 1" class="w-px flex-1 bg-white/10 mt-1"></div>
+                                    </div>
+                                    <!-- Content -->
+                                    <div class="flex-1 pb-4">
+                                        <div class="flex items-center gap-2 mb-1">
+                                            <span class="text-xs font-medium text-white">{{ step.action }}</span>
+                                            <span class="text-[10px] text-slate-600">{{ step.time }}</span>
+                                        </div>
+                                        <div v-if="step.detail" class="text-[11px] text-slate-400 leading-relaxed">{{
+                                            step.detail }}</div>
+                                        <div v-if="step.tool"
+                                            class="mt-1.5 inline-flex items-center gap-1.5 bg-black/30 rounded px-2 py-1">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"
+                                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                class="text-accent-purple">
+                                                <path
+                                                    d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                                            </svg>
+                                            <span class="text-[10px] font-mono text-accent-purple">{{ step.tool
+                                                }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Tab -->
+            <div v-show="activeTab === 'history'" class="flex-1 flex overflow-hidden animate-fade-in">
+                <!-- Run List -->
+                <div class="flex-1 flex flex-col p-6 overflow-hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-lg font-bold text-white">Run History</h2>
+                        <button @click="fetchRuns" class="text-xs text-accent-cyan hover:underline">Refresh</button>
+                    </div>
+                    <div v-if="runHistory.length === 0"
+                        class="flex-1 flex flex-col items-center justify-center text-slate-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="1" class="opacity-30 mb-3">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        No runs yet
+                    </div>
+                    <div v-else class="space-y-2 overflow-y-auto scrollbar-thin flex-1">
+                        <div v-for="run in runHistory" :key="run.run_id" @click="selectedRun = run"
+                            class="glass-subtle rounded-xl p-4 cursor-pointer transition-all hover:bg-white/5"
+                            :class="selectedRun?.run_id === run.run_id ? 'ring-1 ring-accent-cyan/50' : ''">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-sm font-medium text-white truncate max-w-[300px]">{{ run.repo_url }}
+                                </div>
+                                <div :class="{
+                                    'bg-accent-green/10 text-accent-green': run.status === 'success',
+                                    'bg-accent-red/10 text-accent-red': run.status === 'failed',
+                                    'bg-accent-orange/10 text-accent-orange': run.status === 'stopped',
+                                    'bg-accent-cyan/10 text-accent-cyan': run.status === 'running'
+                                }" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase">{{ run.status }}</div>
+                            </div>
+                            <div class="flex items-center gap-4 text-[10px] text-slate-500">
+                                <span class="font-mono">{{ run.run_id?.slice(0, 8) }}</span>
+                                <span>{{ run.steps_completed || 0 }}/{{ run.max_steps || 12 }} steps</span>
+                                <span>{{ run.patches_tried || 0 }} patches</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Run Details Panel -->
+                <transition enter-active-class="transition duration-200" enter-from-class="opacity-0 translate-x-4"
+                    enter-to-class="opacity-100 translate-x-0" leave-active-class="transition duration-150"
+                    leave-from-class="opacity-100" leave-to-class="opacity-0">
+                    <div v-if="selectedRun"
+                        class="w-96 border-l border-white/5 bg-black/20 flex flex-col overflow-hidden">
+                        <div class="p-4 border-b border-white/5 flex items-center justify-between">
+                            <span class="text-sm font-bold text-white">Run Details</span>
+                            <button @click="selectedRun = null" title="Close" class="text-slate-400 hover:text-white">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M18 6L6 18M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="flex-1 p-4 space-y-4 overflow-y-auto scrollbar-thin">
+                            <div>
+                                <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Repository</div>
+                                <div class="text-sm text-white font-mono break-all">{{ selectedRun.repo_url }}</div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="glass-subtle rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 mb-0.5">Status</div>
+                                    <div class="text-sm font-bold" :class="{
+                                        'text-accent-green': selectedRun.status === 'success',
+                                        'text-accent-red': selectedRun.status === 'failed',
+                                        'text-accent-orange': selectedRun.status === 'stopped',
+                                        'text-accent-cyan': selectedRun.status === 'running'
+                                    }">{{ selectedRun.status?.toUpperCase() }}</div>
+                                </div>
+                                <div class="glass-subtle rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 mb-0.5">Steps</div>
+                                    <div class="text-sm font-bold text-white">{{ selectedRun.steps_completed || 0 }}/{{
+                                        selectedRun.max_steps || 12 }}</div>
+                                </div>
+                                <div class="glass-subtle rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 mb-0.5">Patches</div>
+                                    <div class="text-sm font-bold text-white">{{ selectedRun.patches_tried || 0 }}</div>
+                                </div>
+                                <div class="glass-subtle rounded-lg p-3">
+                                    <div class="text-[10px] text-slate-500 mb-0.5">Run ID</div>
+                                    <div class="text-xs font-mono text-slate-300 truncate">{{
+                                        selectedRun.run_id?.slice(0, 12) }}</div>
+                                </div>
+                            </div>
+                            <div v-if="selectedRun.test_cmd">
+                                <div class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Test Command</div>
+                                <code
+                                    class="block text-xs text-accent-cyan bg-black/30 rounded p-2 font-mono">{{ selectedRun.test_cmd }}</code>
+                            </div>
+                        </div>
+                    </div>
+                </transition>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, computed, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // State
+                const wsConnected = ref(false);
+                const showConfig = ref(false);
+                const saving = ref(false);
+                const launching = ref(false);
+                const stopping = ref(false);
+                const activeTab = ref('dashboard');
+                const tokenHistory = ref([]);
+                const logs = ref([]);
+                const consoleRef = ref(null);
+
+                const tabs = [
+                    { id: 'dashboard', name: 'Dashboard', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
+                    { id: 'ai', name: 'AI Working', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
+                    { id: 'history', name: 'History', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
+                ];
+
+                const stats = ref({
+                    phase: 'READY',
+                    step: 0,
+                    maxSteps: 12,
+                    runId: null,
+                    patchesTried: 0,
+                    successRate: 0,
+                    cost: 0.0,
+                    tokens: 0
+                });
+
+                const config = ref({});
+                const configForm = ref({});
+                const runConfig = ref({ repoUrl: '', testCmd: '', maxSteps: 12, plannerMode: 'off' });
+                const runHistory = ref([]);
+                const selectedRun = ref(null);
+
+                // AI Tab state
+                const isAiThinking = ref(false);
+                const aiStatus = ref({ action: null, detail: null, tool: null });
+                const aiSteps = ref([]);
+
+                const progressPercent = computed(() => {
+                    if (!stats.value.maxSteps) return 0;
+                    return Math.min(100, (stats.value.step / stats.value.maxSteps) * 100);
+                });
+
+                const formatKey = (key) => key.replace(/_/g, ' ');
+                const shortId = (id) => id ? id.substring(0, 8) : '';
+                const formatNumber = (n) => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : n.toString();
+
+                const logClass = (type) => ({
+                    'error': 'text-accent-red',
+                    'success': 'text-accent-green',
+                    'warning': 'text-accent-orange',
+                    'info': 'text-accent-cyan',
+                    'debug': 'text-slate-500'
+                }[type] || 'text-slate-300');
+
+                const addLog = (type, msg) => {
+                    const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    logs.value.push({ time: now, type, msg });
+                    if (logs.value.length > 500) logs.value.shift();
+                    nextTick(() => { if (consoleRef.value) consoleRef.value.scrollTop = consoleRef.value.scrollHeight; });
+                };
+
+                const addAiStep = (action, detail, tool, status = 'success') => {
+                    const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                    aiSteps.value.unshift({ action, detail, tool, status, time: now });
+                    if (aiSteps.value.length > 50) aiSteps.value.pop();
+                };
+
+                const clearLogs = () => { logs.value = []; addLog('info', 'Cleared'); };
+
+                const downloadLogs = () => {
+                    const content = logs.value.map(l => `[${l.time}] [${l.type.toUpperCase()}] ${l.msg}`).join('\n');
+                    const blob = new Blob([content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `rfsn-logs-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    addLog('info', '📥 Logs downloaded');
+                };
+
+                const stopRun = async () => {
+                    if (stats.value.phase !== 'RUNNING' || !stats.value.runId) return;
+                    if (!confirm('Stop the current run?')) return;
+                    stopping.value = true;
+                    try {
+                        const res = await fetch(`/api/stop/${stats.value.runId}`, { method: 'POST' });
+                        const data = await res.json();
+                        if (data.ok !== false) {
+                            stats.value.phase = 'STOPPED';
+                            addLog('warning', '⏹ Run stopped');
+                            addAiStep('Run Stopped', 'Cancelled by user', null, 'warning');
+                            isAiThinking.value = false;
+                        } else {
+                            addLog('error', data.error || 'Stop failed');
+                        }
+                    } catch (e) {
+                        addLog('error', `Stop failed: ${e.message}`);
+                    } finally {
+                        stopping.value = false;
+                    }
+                };
+
+                const fetchConfig = async () => {
+                    try { config.value = await (await fetch('/api/config')).json(); } catch (e) { }
+                };
+
+                const fetchRuns = async () => {
+                    try {
+                        const data = await (await fetch('/api/runs')).json();
+                        runHistory.value = [...(data.active || []), ...(data.history || [])];
+                    } catch (e) { }
+                };
+
+                const saveConfig = async () => {
+                    saving.value = true;
+                    try {
+                        await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(configForm.value) });
+                        configForm.value = {};
+                        await fetchConfig();
+                        showConfig.value = false;
+                        addLog('success', 'Settings saved');
+                    } catch (e) { addLog('error', 'Save failed'); }
+                    finally { saving.value = false; }
+                };
+
+                const launchRun = async () => {
+                    if (!runConfig.value.repoUrl) return;
+                    launching.value = true;
+                    isAiThinking.value = true;
+                    aiStatus.value = { action: 'Initializing', detail: 'Setting up controller...', tool: null };
+                    addAiStep('Starting Run', runConfig.value.repoUrl, null, 'running');
+
+                    try {
+                        const res = await fetch('/api/run', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                repo_url: runConfig.value.repoUrl,
+                                test_cmd: runConfig.value.testCmd || null,
+                                max_steps: runConfig.value.maxSteps,
+                                planner_mode: runConfig.value.plannerMode,
+                                policy_mode: 'off'
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.run_id) {
+                            stats.value.runId = data.run_id;
+                            stats.value.phase = 'RUNNING';
+                            stats.value.maxSteps = runConfig.value.maxSteps;
+                            addLog('success', `Started: ${data.run_id}`);
+                            addAiStep('Run Started', `ID: ${data.run_id}`, null, 'success');
+                            aiStatus.value = { action: 'Analyzing Repository', detail: 'Cloning and scanning...', tool: 'git_clone' };
+                        }
+                    } catch (e) {
+                        addLog('error', `Failed: ${e.message}`);
+                        addAiStep('Launch Failed', e.message, null, 'error');
+                        isAiThinking.value = false;
+                    }
+                    finally { launching.value = false; }
+                };
+
+                // WebSocket
+                let ws = null;
+                const connectWs = () => {
+                    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+                    ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
+                    ws.onopen = () => { wsConnected.value = true; addLog('info', '🔗 Connected'); };
+                    ws.onclose = () => { wsConnected.value = false; setTimeout(connectWs, 3000); };
+                    ws.onmessage = (e) => {
+                        try { handleEvent(JSON.parse(e.data)); } catch (err) { }
+                    };
+                };
+
+                const handleEvent = (event) => {
+                    const { type, data, run_id } = event;
+                    if (run_id) stats.value.runId = run_id;
+
+                    switch (type) {
+                        case 'log':
+                            addLog(data.level || 'info', data.message);
+                            break;
+                        case 'status':
+                            if (data.phase) {
+                                stats.value.phase = data.phase;
+                                aiStatus.value.action = data.phase;
+                            }
+                            if (data.step !== undefined) stats.value.step = data.step;
+                            if (data.max_steps !== undefined) stats.value.maxSteps = data.max_steps;
+                            break;
+                        case 'metric':
+                            if (data.patches_tried !== undefined) stats.value.patchesTried = data.patches_tried;
+                            if (data.success_rate !== undefined) stats.value.successRate = data.success_rate;
+                            if (data.cost_est !== undefined) stats.value.cost = data.cost_est;
+                            if (data.tokens !== undefined) {
+                                stats.value.tokens = data.tokens;
+                                tokenHistory.value.push({ time: Date.now(), tokens: data.tokens });
+                                if (tokenHistory.value.length > 50) tokenHistory.value.shift();
+                            }
+                            break;
+                        case 'tool':
+                            aiStatus.value.tool = data.name;
+                            aiStatus.value.detail = data.description;
+                            addAiStep('Tool Call', data.description, data.name, 'running');
+                            break;
+                        case 'thinking':
+                            isAiThinking.value = data.active;
+                            if (data.thought) aiStatus.value.detail = data.thought;
+                            break;
+                        case 'step':
+                            addAiStep(`Step ${data.step}`, data.summary, data.tool, 'success');
+                            break;
+                    }
+                };
+
+                onMounted(() => {
+                    fetchConfig();
+                    fetchRuns();
+                    connectWs();
+                    addLog('info', '✨ Dashboard ready - waiting for controller');
+                });
+
+                return {
+                    wsConnected, showConfig, saving, launching, stopping, activeTab, tabs,
+                    logs, consoleRef, stats, config, configForm, runConfig, runHistory, selectedRun,
+                    isAiThinking, aiStatus, aiSteps, tokenHistory,
+                    progressPercent, formatKey, shortId, formatNumber, logClass,
+                    addLog, clearLogs, downloadLogs, saveConfig, launchRun, stopRun, fetchRuns
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>

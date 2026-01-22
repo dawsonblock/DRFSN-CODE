@@ -1,0 +1,116 @@
+"""RFSN Progress Broadcaster.
+
+Sends real-time events to the local dashboard via HTTP.
+Fire-and-forget architecture to avoid blocking the controller.
+"""
+
+import queue
+import threading
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, Optional
+
+import requests
+
+# Default dashboard URL
+DASHBOARD_URL = "http://localhost:8000/api/events"
+
+
+@dataclass
+class Event:
+    type: str
+    data: Dict[str, Any]
+    run_id: Optional[str] = None
+
+
+class ProgressBroadcaster:
+    """Async event broadcaster for the dashboard."""
+
+    def __init__(self, run_id: Optional[str] = None):
+        self.run_id = run_id
+        self._queue: queue.Queue[Event] = queue.Queue()
+        self._stop_event = threading.Event()
+        self._worker_thread = threading.Thread(target=self._worker, daemon=True)
+        self._worker_thread.start()
+        self.enabled = True
+
+    def log(self, message: str, level: str = "info") -> None:
+        """Broadcast a log message."""
+        self._enqueue("log", {"message": message, "level": level})
+
+    def status(
+        self, phase: str, step: Optional[int] = None, max_steps: Optional[int] = None
+    ) -> None:
+        """Broadcast status update."""
+        data: Dict[str, Any] = {"phase": phase}
+        if step is not None:
+            data["step"] = step
+        if max_steps is not None:
+            data["max_steps"] = max_steps
+        self._enqueue("status", data)
+
+    def metric(
+        self,
+        patches_tried: int,
+        success_rate: float,
+        cost_est: float,
+        tokens: int = 0,
+    ) -> None:
+        """Broadcast metrics."""
+        self._enqueue(
+            "metric",
+            {
+                "patches_tried": patches_tried,
+                "success_rate": round(success_rate, 1),
+                "cost_est": cost_est,
+                "tokens": tokens,
+            },
+        )
+
+    def tool(
+        self, name: str, description: str, args: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Broadcast tool execution event."""
+        self._enqueue(
+            "tool", {"name": name, "description": description, "args": args or {}}
+        )
+
+    def thinking(self, active: bool, thought: Optional[str] = None) -> None:
+        """Broadcast AI thinking state."""
+        data: Dict[str, Any] = {"active": active}
+        if thought:
+            data["thought"] = thought
+        self._enqueue("thinking", data)
+
+    def step(self, step_num: int, summary: str, tool: Optional[str] = None) -> None:
+        """Broadcast step completion."""
+        self._enqueue("step", {"step": step_num, "summary": summary, "tool": tool})
+
+    def _enqueue(self, event_type: str, data: Dict[str, Any]) -> None:
+        if not self.enabled:
+            return
+        self._queue.put(Event(type=event_type, data=data, run_id=self.run_id))
+
+    def _worker(self) -> None:
+        """Background worker to send requests."""
+        while not self._stop_event.is_set():
+            try:
+                event = self._queue.get(timeout=0.5)
+                try:
+                    requests.post(
+                        DASHBOARD_URL,
+                        json=asdict(event),
+                        timeout=0.2,  # Fast timeout, don't block
+                    )
+                except requests.RequestException:
+                    # Dashboard probably not running, ignore
+                    pass
+                finally:
+                    self._queue.task_done()
+            except queue.Empty:
+                continue
+
+    def close(self) -> None:
+        """Stop the worker."""
+        self._stop_event.set()
+        if self._worker_thread.is_alive():
+            self._worker_thread.join(timeout=1.0)
