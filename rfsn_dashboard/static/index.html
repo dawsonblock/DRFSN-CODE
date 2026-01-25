@@ -100,12 +100,14 @@
 
         .glass {
             background: rgba(15, 23, 42, 0.5);
+            -webkit-backdrop-filter: blur(20px);
             backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         .glass-subtle {
             background: rgba(15, 23, 42, 0.3);
+            -webkit-backdrop-filter: blur(12px);
             backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.04);
         }
@@ -417,7 +419,7 @@
                     </div>
 
                     <!-- Metrics -->
-                    <div class="p-5 grid grid-cols-2 gap-2">
+                    <div class="p-5 grid grid-cols-3 gap-2">
                         <div class="glass-subtle rounded-xl p-3">
                             <div class="text-[10px] text-slate-500 mb-0.5">Patches</div>
                             <div class="text-lg font-bold text-white">{{ stats.patchesTried }}</div>
@@ -429,12 +431,29 @@
                                 stats.successRate }}%</div>
                         </div>
                         <div class="glass-subtle rounded-xl p-3">
+                            <div class="text-[10px] text-slate-500 mb-0.5 flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24"
+                                    fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                </svg>
+                                QA Gate
+                            </div>
+                            <div class="text-lg font-bold"
+                                :class="stats.qaPassRate >= 80 ? 'text-accent-green' : stats.qaPassRate >= 50 ? 'text-accent-orange' : 'text-accent-red'">
+                                {{
+                                stats.qaPassRate }}%</div>
+                        </div>
+                        <div class="glass-subtle rounded-xl p-3">
                             <div class="text-[10px] text-slate-500 mb-0.5">Cost</div>
                             <div class="text-lg font-bold text-accent-green">${{ stats.cost.toFixed(2) }}</div>
                         </div>
                         <div class="glass-subtle rounded-xl p-3">
                             <div class="text-[10px] text-slate-500 mb-0.5">Tokens</div>
                             <div class="text-lg font-bold text-accent-purple">{{ formatNumber(stats.tokens) }}</div>
+                        </div>
+                        <div class="glass-subtle rounded-xl p-3">
+                            <div class="text-[10px] text-slate-500 mb-0.5">Coverage</div>
+                            <div class="text-lg font-bold text-accent-cyan">{{ stats.coverage }}%</div>
                         </div>
                     </div>
                 </div>
@@ -586,6 +605,123 @@
                 </div>
             </div>
 
+            <!-- QA Gate Tab -->
+            <div v-show="activeTab === 'qa'" class="flex-1 flex overflow-hidden animate-fade-in">
+
+                <!-- Claims List -->
+                <div class="w-80 border-r border-white/5 flex flex-col overflow-hidden shrink-0">
+                    <div class="h-10 border-b border-white/5 flex items-center justify-between px-4">
+                        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Claims</span>
+                        <span class="text-[10px] text-slate-600">{{ qaClaims.length }}</span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-2">
+                        <div v-if="qaClaims.length === 0"
+                            class="flex items-center justify-center h-full text-slate-700 text-xs">
+                            No claims yet
+                        </div>
+                        <div v-for="claim in qaClaims" :key="claim.id"
+                            class="glass-subtle rounded-lg p-3 border-l-2 transition-all hover:bg-white/5" :class="{
+                                'border-accent-green': claim.verdict === 'ACCEPT',
+                                'border-accent-orange': claim.verdict === 'CHALLENGE', 
+                                'border-accent-red': claim.verdict === 'REJECT',
+                                'border-slate-600': !claim.verdict
+                            }">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-[10px] font-bold uppercase" :class="{
+                                    'text-accent-green': claim.verdict === 'ACCEPT',
+                                    'text-accent-orange': claim.verdict === 'CHALLENGE',
+                                    'text-accent-red': claim.verdict === 'REJECT',
+                                    'text-slate-500': !claim.verdict
+                                }">{{ claim.type }}</span>
+                            </div>
+                            <div class="text-xs text-slate-300">{{ claim.statement }}</div>
+                            <div v-if="claim.verdict" class="mt-2 flex items-center gap-1.5">
+                                <span class="text-[10px] px-1.5 py-0.5 rounded font-bold" :class="{
+                                    'bg-accent-green/20 text-accent-green': claim.verdict === 'ACCEPT',
+                                    'bg-accent-orange/20 text-accent-orange': claim.verdict === 'CHALLENGE',
+                                    'bg-accent-red/20 text-accent-red': claim.verdict === 'REJECT'
+                                }">{{ claim.verdict }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Gate Decisions -->
+                <div class="flex-1 flex flex-col min-w-0">
+                    <div class="h-10 border-b border-white/5 flex items-center px-4">
+                        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Gate
+                            Decisions</span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-3">
+                        <div v-if="qaDecisions.length === 0"
+                            class="flex flex-col items-center justify-center h-full text-slate-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="1" class="opacity-30 mb-3">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>
+                            <span class="text-xs">No gate decisions yet</span>
+                        </div>
+                        <div v-for="(decision, idx) in qaDecisions" :key="idx"
+                            class="glass-subtle rounded-xl p-4 animate-slide-in"
+                            :class="decision.accepted ? 'border border-accent-green/20' : 'border border-accent-red/20'">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <div :class="decision.accepted ? 'bg-accent-green' : 'bg-accent-red'"
+                                        class="w-2 h-2 rounded-full"></div>
+                                    <span class="text-sm font-bold"
+                                        :class="decision.accepted ? 'text-accent-green' : 'text-accent-red'">
+                                        {{ decision.accepted ? 'ACCEPTED' : 'REJECTED' }}
+                                    </span>
+                                </div>
+                                <span class="text-[10px] text-slate-600">{{ decision.time }}</span>
+                            </div>
+                            <div class="text-xs text-slate-400 mb-2">{{ decision.reason }}</div>
+                            <div v-if="decision.escalation_tags?.length" class="flex flex-wrap gap-1">
+                                <span v-for="tag in decision.escalation_tags" :key="tag"
+                                    class="text-[10px] px-1.5 py-0.5 rounded bg-accent-orange/20 text-accent-orange">
+                                    {{ tag }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QA Stats Sidebar -->
+                <div class="w-64 border-l border-white/5 flex flex-col p-4 space-y-4">
+                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">QA Metrics</div>
+
+                    <div class="glass-subtle rounded-xl p-4 text-center">
+                        <div class="text-3xl font-bold"
+                            :class="stats.qaPassRate >= 80 ? 'text-accent-green' : stats.qaPassRate >= 50 ? 'text-accent-orange' : 'text-accent-red'">
+                            {{ stats.qaPassRate }}%
+                        </div>
+                        <div class="text-[10px] text-slate-500 mt-1">Pass Rate</div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-500">Claims Evaluated</span>
+                            <span class="text-white font-mono">{{ qaClaims.length }}</span>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-500">Accepted</span>
+                            <span class="text-accent-green font-mono">{{ qaClaims.filter(c => c.verdict ===
+                                'ACCEPT').length }}</span>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-500">Rejected</span>
+                            <span class="text-accent-red font-mono">{{ qaClaims.filter(c => c.verdict ===
+                                'REJECT').length }}</span>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-500">Challenged</span>
+                            <span class="text-accent-orange font-mono">{{ qaClaims.filter(c => c.verdict ===
+                                'CHALLENGE').length }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- History Tab -->
             <div v-show="activeTab === 'history'" class="flex-1 flex overflow-hidden animate-fade-in">
                 <!-- Run List -->
@@ -702,6 +838,7 @@
                 const tabs = [
                     { id: 'dashboard', name: 'Dashboard', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
                     { id: 'ai', name: 'AI Working', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>' },
+                    { id: 'qa', name: 'QA Gate', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>' },
                     { id: 'history', name: 'History', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>' },
                 ];
 
@@ -712,6 +849,8 @@
                     runId: null,
                     patchesTried: 0,
                     successRate: 0,
+                    qaPassRate: 100,
+                    coverage: 0,
                     cost: 0.0,
                     tokens: 0
                 });
@@ -726,6 +865,11 @@
                 const isAiThinking = ref(false);
                 const aiStatus = ref({ action: null, detail: null, tool: null });
                 const aiSteps = ref([]);
+
+                // QA Tab state
+                const qaClaims = ref([]);
+                const qaVerdicts = ref([]);
+                const qaDecisions = ref([]);
 
                 const progressPercent = computed(() => {
                     if (!stats.value.maxSteps) return 0;
@@ -902,6 +1046,36 @@
                         case 'step':
                             addAiStep(`Step ${data.step}`, data.summary, data.tool, 'success');
                             break;
+                        // QA Events
+                        case 'qa_claim':
+                            qaClaims.value.push({
+                                id: data.claim_id || 'C' + (qaClaims.value.length + 1),
+                                type: data.claim_type || 'unknown',
+                                statement: data.statement || '',
+                                verdict: null
+                            });
+                            addLog('info', `📋 Claim: ${data.statement?.slice(0, 50)}...`);
+                            break;
+                        case 'qa_verdict':
+                            const claim = qaClaims.value.find(c => c.id === data.claim_id);
+                            if (claim) claim.verdict = data.verdict;
+                            const color = data.verdict === 'ACCEPT' ? 'success' : data.verdict === 'REJECT' ? 'error' : 'warning';
+                            addLog(color, `⚖️ Verdict: ${data.claim_id} → ${data.verdict}`);
+                            break;
+                        case 'qa_decision':
+                            const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' });
+                            qaDecisions.value.unshift({
+                                accepted: data.accepted,
+                                reason: data.reason || '',
+                                escalation_tags: data.escalation_tags || [],
+                                time: now
+                            });
+                            // Update pass rate
+                            const total = qaDecisions.value.length;
+                            const passed = qaDecisions.value.filter(d => d.accepted).length;
+                            stats.value.qaPassRate = total > 0 ? Math.round((passed / total) * 100) : 100;
+                            addLog(data.accepted ? 'success' : 'error', `🛡️ Gate: ${data.accepted ? 'ACCEPTED' : 'REJECTED'}`);
+                            break;
                     }
                 };
 
@@ -916,6 +1090,7 @@
                     wsConnected, showConfig, saving, launching, stopping, activeTab, tabs,
                     logs, consoleRef, stats, config, configForm, runConfig, runHistory, selectedRun,
                     isAiThinking, aiStatus, aiSteps, tokenHistory,
+                    qaClaims, qaVerdicts, qaDecisions,
                     progressPercent, formatKey, shortId, formatNumber, logClass,
                     addLog, clearLogs, downloadLogs, saveConfig, launchRun, stopRun, fetchRuns
                 };

@@ -26,8 +26,8 @@ from .action_outcome_memory import (
     make_context_signature,
     score_action,
 )
-from .broadcaster import ProgressBroadcaster
 from .apt_whitelist import AptTier, AptWhitelist
+from .broadcaster import ProgressBroadcaster
 from .buildpacks import (
     BuildpackContext,
     BuildpackType,
@@ -35,17 +35,20 @@ from .buildpacks import (
     get_buildpack,
 )
 from .clock import FrozenClock, SystemClock, make_run_id, parse_utc_iso
+from .diff_minimizer import DiffMinimizer
 from .evidence_pack import EvidencePackConfig, EvidencePackExporter
 from .goals import DEFAULT_FEATURE_SUBGOALS
 from .llm import call_ensemble_sync
 from .log import write_jsonl
 from .parallel import evaluate_patches_parallel, find_first_successful_patch
 from .parsers import normalize_test_path, parse_trace_files
+from .patch_budget import create_patch_budget_controller
 from .patch_hygiene import PatchHygieneConfig, validate_patch_hygiene
 from .phases import Phase, PhaseTransition
 from .policy import choose_policy
 from .project_detection import detect_project_type, get_default_test_command, get_setup_commands
 from .prompt import MODE_FEATURE, build_model_input
+from .qa import QAConfig, QAOrchestrator
 from .sandbox import (
     DockerResult,
     Sandbox,
@@ -77,7 +80,7 @@ from .stall_detector import StallState
 from .sysdeps_installer import SysdepsInstaller
 from .tool_manager import ToolRequestConfig, ToolRequestManager
 from .url_validation import validate_github_url
-from .verifier import VerifyResult, run_tests
+from .verifier import TestDeltaTracker, VerifyResult, run_tests
 
 
 def _truncate(s: str, limit: int) -> str:
@@ -525,6 +528,40 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         except ImportError:
             pass
         
+        # Initialize adaptive patch budget controller
+        # Determines max_lines/max_files dynamically based on stagnation
+        patch_budget = create_patch_budget_controller(
+            user_ceiling_override=getattr(cfg, "allow_ceiling_override", False),
+            stagnation_threshold=2,
+        )
+        log({"phase": "patch_budget_init", **patch_budget.get_state_summary()})
+        
+        # Initialize diff minimizer for pre-hygiene patch shrinking
+        diff_minimizer = DiffMinimizer()
+        
+        # Delta tracker initialized after first test run (needs baseline)
+        delta_tracker: TestDeltaTracker | None = None
+        
+        # Initialize QA orchestrator for claim-based verification
+        qa_orchestrator: QAOrchestrator | None = None
+        if cfg.learning_db_path:
+            qa_db_path = cfg.learning_db_path.replace(".db", "_qa.db")
+        else:
+            qa_db_path = None
+        budget_limits = patch_budget.get_limits()
+        qa_config = QAConfig(
+            surgical_max_lines=budget_limits[0],
+            surgical_max_files=budget_limits[1],
+            persist_outcomes=qa_db_path is not None,
+            db_path=qa_db_path,
+        )
+        qa_orchestrator = QAOrchestrator(
+            config=qa_config,
+            delta_tracker=delta_tracker,
+        )
+        log({"phase": "qa_orchestrator_init", "db_path": qa_db_path})
+
+        
         # Initialize telemetry if enabled
         if cfg.enable_telemetry:
             try:
@@ -599,9 +636,9 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         elite_policy = None
         if cfg.policy_mode == "bandit":
             try:
-                from .policy_bandit import ThompsonBandit
+                from .policy_bandit import create_policy
                 policy_db = cfg.learning_db_path.replace(".db", "_policy.db") if cfg.learning_db_path else None
-                elite_policy = ThompsonBandit(seed=cfg.seed, db_path=policy_db)
+                elite_policy = create_policy(db_path=policy_db, seed=cfg.seed)
                 log({"phase": "elite_policy_init", "mode": cfg.policy_mode, "seed": cfg.seed})
             except ImportError as e:
                 log({"phase": "elite_policy_init", "error": str(e)})
@@ -1206,6 +1243,16 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                 }
             )
 
+            # Initialize delta tracker on first test run (captures baseline)
+            if delta_tracker is None and v.failing_tests:
+                delta_tracker = TestDeltaTracker(set(v.failing_tests))
+                log({
+                    "phase": "delta_tracker_init",
+                    "step": step_count,
+                    "baseline_failing_count": len(v.failing_tests),
+                })
+
+
             if v.ok:
                 print(f"\n✅ SUCCESS! All tests passing after {step_count} steps.")
                 current_phase = Phase.FINAL_VERIFY
@@ -1429,6 +1476,7 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
             if cfg.parallel_patches:
                 try:
                     import asyncio
+
                     from .llm_async import generate_patches_parallel
                     print(f"[Step {step_count}] Generating parallel responses (temps={cfg.temps})...")
                     parallel_responses = asyncio.run(
@@ -1709,11 +1757,27 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                 elif project_type:
                     detected_language = project_type.name.lower()
 
-                # Choose base policy based on mode
+                # Get adaptive limits from budget controller
+                budget_max_lines, budget_max_files = patch_budget.get_limits()
+                
+                # Use budget controller limits, with feature mode adjustments
                 if cfg.feature_mode:
-                    hygiene_config = PatchHygieneConfig.for_feature_mode(language=detected_language)
+                    # Feature mode may need higher baseline, but still use budget controller
+                    base_config = PatchHygieneConfig.for_feature_mode(language=detected_language)
+                    # Use the max of budget controller and feature mode defaults
+                    hygiene_config = PatchHygieneConfig.custom(
+                        max_lines_changed=max(budget_max_lines, base_config.max_lines_changed),
+                        max_files_changed=max(budget_max_files, base_config.max_files_changed),
+                        allow_test_modification=True,
+                        language=detected_language,
+                    )
                 else:
-                    hygiene_config = PatchHygieneConfig.for_repair_mode(language=detected_language)
+                    # Repair mode uses budget controller limits directly
+                    hygiene_config = PatchHygieneConfig.custom(
+                        max_lines_changed=budget_max_lines,
+                        max_files_changed=budget_max_files,
+                        language=detected_language,
+                    )
 
                 # Apply CLI overrides
                 if cfg.max_lines_changed is not None:
@@ -1732,11 +1796,25 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                         "max_lines": hygiene_config.max_lines_changed,
                         "max_files": hygiene_config.max_files_changed,
                         "allow_lockfile_changes": hygiene_config.allow_lockfile_changes,
+                        "budget_tier": patch_budget.current_tier.name,
                     }
                 )
 
                 for diff, temp in patches_to_evaluate:
-                    hygiene_result = validate_patch_hygiene(diff, hygiene_config)
+                    # Minimize diff before hygiene check
+                    minimized = diff_minimizer.minimize(diff)
+                    if minimized.dropped_hunks > 0:
+                        log({
+                            "phase": "diff_minimized",
+                            "step": step_count,
+                            "dropped_hunks": minimized.dropped_hunks,
+                            "reduction_ratio": round(minimized.reduction_ratio, 2),
+                        })
+                        diff_to_check = minimized.minimized
+                    else:
+                        diff_to_check = diff
+                    
+                    hygiene_result = validate_patch_hygiene(diff_to_check, hygiene_config)
                     if hygiene_result.is_valid:
                         valid_patches.append((diff, temp))
                     else:
@@ -1835,9 +1913,62 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                                 "winner_hash": getattr(winner, "diff_hash", ""),
                             }
                         )
-                        # Apply winner to main repo
-                        apply_patch(sb, getattr(winner, "diff", ""))
-                        winner_diff = getattr(winner, "diff", "")
+                        
+                        # QA gate check before applying winner
+                        qa_passed = True
+                        if qa_orchestrator is not None:
+                            try:
+                                # Update QA config with current patch budget limits
+                                current_limits = patch_budget.get_limits()
+                                qa_orchestrator.config.surgical_max_lines = current_limits[0]
+                                qa_orchestrator.config.surgical_max_files = current_limits[1]
+                                # Update delta tracker reference
+                                qa_orchestrator.collector.delta_tracker = delta_tracker
+                                
+                                qa_result = qa_orchestrator.evaluate_patch(
+                                    diff=getattr(winner, "diff", ""),
+                                    failing_tests=pd.failing_tests if hasattr(pd, "failing_tests") else [],
+                                    test_cmd=effective_test_cmd,
+                                    failure_signature=getattr(ctx, "error_signature", "") if ctx else "",
+                                )
+                                log({
+                                    "phase": "qa_gate",
+                                    "step": step_count,
+                                    "accepted": qa_result.accepted,
+                                    "rejection_reasons": qa_result.rejection_reasons,
+                                    "escalation_tags": qa_result.escalation_tags,
+                                })
+                                
+                                if not qa_result.accepted:
+                                    qa_passed = False
+                                    print(f"[Step {step_count}] ⚠️ QA gate rejected: {qa_result.rejection_reasons}")
+                                    
+                                    # Check if we should escalate patch budget
+                                    if qa_orchestrator.should_escalate_budget(qa_result):
+                                        # Log before escalation for context
+                                        log({
+                                            "phase": "patch_budget_qa_escalation_trigger",
+                                            "step": step_count,
+                                            "stagnation_count": steps_without_progress,
+                                        })
+                                        escalated = patch_budget.escalate()
+                                        if escalated:
+                                            log({
+                                                "phase": "patch_budget_qa_escalate",
+                                                "step": step_count,
+                                                **patch_budget.get_state_summary(),
+                                            })
+                                elif qa_result.escalation_tags:
+                                    tags = qa_result.escalation_tags
+                                    print(f"[Step {step_count}] ⚠️ QA accepted with escalations: {tags}")
+                            except Exception as qa_err:
+                                log({"phase": "qa_gate_error", "step": step_count, "error": str(qa_err)})
+                                # Continue anyway if QA fails
+                        
+                        if qa_passed:
+                            # Apply winner to main repo
+                            apply_patch(sb, getattr(winner, "diff", ""))
+                            winner_diff = getattr(winner, "diff", "")
 
                         # In feature mode, progress through subgoals ONLY if patch is successful
                         # The winner patch passed verification, so we can mark current subgoal as complete
@@ -1874,6 +2005,23 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                                 print(f"  > Patch {res.diff_hash[:8]} failed: {res.info[:200]}...")
                         log({"phase": "no_winner", "step": step_count, "attempted": len(valid_patches)})
                         
+                        # Update patch budget controller with failure
+                        patch_budget.record_attempt(
+                            failing_tests=set(v.failing_tests),
+                            success=False,
+                        )
+                        
+                        # Check if we should escalate limits
+                        if patch_budget.should_escalate():
+                            if patch_budget.escalate():
+                                log({
+                                    "phase": "budget_escalated",
+                                    "step": step_count,
+                                    **patch_budget.get_state_summary(),
+                                })
+                                print(f"[Step {step_count}] ⬆️  Escalated to {patch_budget.current_tier.name} "
+                                      f"(lines: {patch_budget.get_limits()[0]})")
+                        
                         # Track with termination heuristics
                         if termination_heuristics is not None:
                             for diff, _ in valid_patches:
@@ -1891,6 +2039,7 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                                 })
                                 current_phase = Phase.BAILOUT
                                 break
+
 
             step_count += 1
             

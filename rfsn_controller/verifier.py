@@ -27,6 +27,9 @@ class VerifyResult:
     sig: str = ""
     predicate_name: str = "tests"  # Name of the verification predicate
     skipped: bool = False  # Whether verification was skipped
+    # Test delta tracking
+    tests_fixed: List[str] = field(default_factory=list)  # fail → pass
+    tests_regressed: List[str] = field(default_factory=list)  # pass → fail
 
 
 @dataclass
@@ -38,6 +41,68 @@ class VerifySummary:
     total_checks: int
     passed_checks: int
     failed_checks: int
+
+
+class TestDeltaTracker:
+    """Track test state transitions across patch attempts.
+
+    Used to detect regressions (previously passing tests now failing)
+    and measure progress (previously failing tests now passing).
+    """
+
+    def __init__(self, baseline_failing: set):
+        """Initialize with baseline failing test set.
+
+        Args:
+            baseline_failing: Set of test names that were failing before patch.
+        """
+        self.baseline_failing = set(baseline_failing)
+
+    def compute_delta(self, current_failing: set) -> tuple:
+        """Compute test state transitions.
+
+        Args:
+            current_failing: Set of test names failing after patch.
+
+        Returns:
+            Tuple of (tests_fixed, tests_regressed) as lists.
+        """
+        fixed = self.baseline_failing - current_failing
+        regressed = current_failing - self.baseline_failing
+        return list(fixed), list(regressed)
+
+    def has_regressions(self, current_failing: set) -> bool:
+        """Check if any previously-passing test now fails.
+
+        Args:
+            current_failing: Set of test names failing after patch.
+
+        Returns:
+            True if regressions detected.
+        """
+        return bool(current_failing - self.baseline_failing)
+
+    def get_regression_count(self, current_failing: set) -> int:
+        """Get count of regressed tests.
+
+        Args:
+            current_failing: Set of test names failing after patch.
+
+        Returns:
+            Number of tests that regressed.
+        """
+        return len(current_failing - self.baseline_failing)
+
+    def get_fixed_count(self, current_failing: set) -> int:
+        """Get count of fixed tests.
+
+        Args:
+            current_failing: Set of test names failing after patch.
+
+        Returns:
+            Number of tests that were fixed.
+        """
+        return len(self.baseline_failing - current_failing)
 
 
 class Verifier:
