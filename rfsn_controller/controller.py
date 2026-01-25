@@ -632,6 +632,20 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         if elite_planner_enabled:
             log({"phase": "elite_planner_init", "mode": cfg.planner_mode, "status": "deferred"})
 
+        # === PLANNER V2: High-level goal decomposition ===
+        planner_v2_adapter = None
+        planner_v2_enabled = cfg.planner_mode == "v2"
+        if planner_v2_enabled:
+            try:
+                from .planner_v2 import ControllerAdapter, MemoryAdapter, PlannerV2
+                planner_memory = MemoryAdapter(memory_store) if memory_store else MemoryAdapter()
+                planner_v2 = PlannerV2(memory_adapter=planner_memory, seed=cfg.seed)
+                planner_v2_adapter = ControllerAdapter(planner=planner_v2)
+                log({"phase": "planner_v2_init", "mode": cfg.planner_mode, "status": "ready"})
+            except ImportError as e:
+                log({"phase": "planner_v2_init", "error": str(e)})
+                planner_v2_enabled = False
+
         # === ELITE CONTROLLER: Initialize Policy ===
         elite_policy = None
         if cfg.policy_mode == "bandit":
@@ -1212,6 +1226,37 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         feature_subgoals = list(DEFAULT_FEATURE_SUBGOALS)
         completed_feature_subgoals: list[str] = []
         current_feature_subgoal_idx = 0
+
+        # === PLANNER V2: Start goal if enabled ===
+        planner_v2_task_spec = None
+        if planner_v2_enabled and planner_v2_adapter is not None:
+            try:
+                # Build context for planner
+                planner_context = {
+                    "repo_type": project_type.name if project_type else str(cfg.project_type),
+                    "language": selected_buildpack_instance.buildpack_type.value
+                        if selected_buildpack_instance else "unknown",
+                    "test_cmd": effective_test_cmd,
+                    "failing_test_file": v.failing_tests[0] if v.failing_tests else None,
+                    "failing_tests": v.failing_tests[:5],
+                    "error_signature": v.sig,
+                }
+                # Determine goal from mode
+                if cfg.feature_mode:
+                    goal = f"Implement feature: {cfg.description or 'new functionality'}"
+                else:
+                    goal = f"Fix failing tests: {len(v.failing_tests)} tests failing"
+                
+                planner_v2_task_spec = planner_v2_adapter.start_goal(goal, planner_context)
+                log({
+                    "phase": "planner_v2_goal_start",
+                    "goal": goal,
+                    "plan_id": planner_v2_adapter.get_plan().plan_id if planner_v2_adapter.get_plan() else None,
+                    "first_step": planner_v2_task_spec.step_id,
+                    "intent": planner_v2_task_spec.intent,
+                })
+            except Exception as e:
+                log({"phase": "planner_v2_goal_start", "error": str(e)})
 
         while step_count < max_iterations:
             # Progress reporting
@@ -2057,6 +2102,50 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                 )
             except ImportError:
                 pass  # Events module not available
+
+            # === PLANNER V2: Process step outcome and get next step ===
+            if planner_v2_enabled and planner_v2_adapter is not None and planner_v2_task_spec is not None:
+                try:
+                    from .planner_v2 import ControllerOutcome
+                    # Build outcome from this step
+                    outcome = ControllerOutcome(
+                        step_id=planner_v2_task_spec.step_id,
+                        success=v.ok or (len(v.failing_tests) < min_failing_tests),
+                        patch_applied=len(valid_patches) > 0 if 'valid_patches' in dir() else False,
+                        tests_passed=v.ok,
+                        error_message=v.sig if not v.ok else None,
+                        metrics={
+                            "step_count": step_count,
+                            "failing_tests": len(v.failing_tests),
+                            "exit_code": v.exit_code,
+                        }
+                    )
+                    
+                    # Process outcome and get next step
+                    planner_v2_task_spec = planner_v2_adapter.process_outcome(outcome)
+                    
+                    if planner_v2_task_spec is not None:
+                        log({
+                            "phase": "planner_v2_next_step",
+                            "step": step_count,
+                            "next_step_id": planner_v2_task_spec.step_id,
+                            "intent": planner_v2_task_spec.intent,
+                        })
+                    else:
+                        # Plan complete or halted
+                        summary = planner_v2_adapter.get_summary()
+                        log({
+                            "phase": "planner_v2_complete",
+                            "step": step_count,
+                            "summary": summary,
+                        })
+                        if planner_v2_adapter.is_halted():
+                            bailout_reason = f"Planner v2 halted: {planner_v2_adapter.get_halt_reason()}"
+                            log({"phase": "bailout", "reason": bailout_reason})
+                            current_phase = Phase.BAILOUT
+                            break
+                except Exception as e:
+                    log({"phase": "planner_v2_process_outcome", "error": str(e)})
 
         # === PHASE: FINAL_VERIFY ===
         if current_phase == Phase.FINAL_VERIFY:
