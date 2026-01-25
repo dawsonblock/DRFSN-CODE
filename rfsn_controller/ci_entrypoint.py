@@ -9,20 +9,16 @@ from __future__ import annotations
 
 import os
 import sys
-import json
-import asyncio
-from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional
 
-# Mock imports for the purpose of this file generation
-# In real usage, these would handle the actual logic
+# Imports for future integration (stubs for now)
 try:
-    from .planner_v2.controller_adapter import ControllerAdapter
-    from .planner_v2.schema import ControllerOutcome
+    from .planner_v2.controller_adapter import ControllerAdapter  # noqa: F401
+    from .planner_v2.schema import ControllerOutcome  # noqa: F401
     from .explainer import Explainer
 except ImportError:
     # Allow import failure during setup
-    pass
+    Explainer = None  # type: ignore
 
 
 def run_ci_job(
@@ -40,7 +36,7 @@ def run_ci_job(
     Returns:
         Exit code (0 for success, 1 for failure).
     """
-    print(f"::group::Setup Controller")
+    print("::group::Setup Controller")
     print(f"Goal: {goal}")
     print(f"Repo: {repo_path}")
     

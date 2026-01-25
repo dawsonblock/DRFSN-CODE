@@ -10,8 +10,16 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from .failure_classifier import FailureClassifier, FailureType
 from .lifecycle import StepLifecycle
+from .llm_decomposer import LLMDecomposer
 from .memory_adapter import MemoryAdapter
+from .metrics import get_metrics_collector
+from .model_selector import ModelSelector
+from .parallel_executor import ParallelStepExecutor
+from .plan_cache import PlanCache
+from .regression_firewall import RegressionFirewall
+from .revision_strategies import get_revision_registry
 from .schema import (
     ControllerOutcome,
     Plan,
@@ -20,14 +28,6 @@ from .schema import (
     Step,
     StepStatus,
 )
-from .llm_decomposer import LLMDecomposer
-from .metrics import get_metrics_collector
-from .plan_cache import PlanCache
-from .revision_strategies import get_revision_registry
-from .parallel_executor import ParallelStepExecutor
-from .failure_classifier import FailureClassifier, FailureType
-from .model_selector import ModelSelector
-from .regression_firewall import RegressionFirewall
 from .semantic_guardrails import SemanticGuardrails
 
 

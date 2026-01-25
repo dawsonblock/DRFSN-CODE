@@ -7,8 +7,7 @@ Enforces constraints like "do not change function signatures" or
 from __future__ import annotations
 
 import ast
-import ast
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional
 
 
 class SemanticDiff:
