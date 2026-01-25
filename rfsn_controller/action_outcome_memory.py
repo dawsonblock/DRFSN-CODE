@@ -465,8 +465,9 @@ def make_action_key_for_patch(diff: str) -> str:
     return _sha256(diff or "")
 
 
-def make_action_json_for_patch(diff: str) -> Dict[str, Any]:
+def make_action_json_for_patch(diff: str, tags: Optional[List[str]] = None) -> Dict[str, Any]:
     return {
         "diff_hash": make_action_key_for_patch(diff),
         "diff_lines": _diff_line_count(diff),
+        "tags": tags or [],
     }

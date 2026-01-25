@@ -5,6 +5,7 @@ Connects planner step verification with QA claim-based validation.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -13,6 +14,8 @@ from .schema import ControllerOutcome, FailureCategory, FailureEvidence, Step
 if TYPE_CHECKING:
     from ..qa.qa_orchestrator import QAOrchestrator, QAResult
     from ..qa.qa_types import Claim
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -65,6 +68,7 @@ class PlannerQABridge:
             List of claims to verify.
         """
         if not self.enabled:
+            logger.debug("QA disabled - skipping claim extraction for step %s", step.step_id)
             return []
         
         from ..qa.qa_types import Claim, ClaimType, EvidenceType
@@ -136,6 +140,8 @@ class PlannerQABridge:
                 escalation_tags=[],
             )
         
+        logger.info("Running QA verification for step %s", step.step_id)
+        
         try:
             # Run QA evaluation
             qa_result = self._qa.evaluate_patch(
@@ -156,6 +162,7 @@ class PlannerQABridge:
             )
             
         except Exception as e:
+            logger.exception("QA verification failed for step %s: %s", step.step_id, e)
             # QA failed, don't block execution
             return StepQAResult(
                 step_id=step.step_id,

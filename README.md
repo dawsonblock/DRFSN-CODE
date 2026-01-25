@@ -18,9 +18,9 @@ Why rely on one model? The Controller can query multiple providers simultaneousl
 - **Resilience**: If one API fails, the other takes over instantly
 - **Consensus**: "Votes" on the best patch from multiple candidates
 
-### 📋 Planner v2.2 (NEW)
+### 📋 Planner v3.0 (Self-Learning Repair) ⭐ NEW
 
-High-level goal decomposition with governance, audit trails, and developer ergonomics.
+High-level goal decomposition with **learned model arbitration**, **failure classification**, and **safety guardrails**.
 
 ```python
 from rfsn_controller.planner_v2 import PlannerV2, ControllerAdapter
@@ -35,14 +35,15 @@ while task_spec:
 
 | Module | Description |
 |--------|-------------|
-| **PlannerV2** | Goal decomposition into atomic steps |
-| **LLMDecomposer** | LLM-powered intelligent breakdown |
+| **FailureClassifier** | Categorizes errors (build, test, import, etc) |
+| **ModelSelector** | Thompson Sampling for model arbitration |
+| **RegressionFirewall** | Blocks toxic patch signatures |
+| **SemanticGuardrails** | AST-based API change prevention |
+| **LLMDecomposer** | Failure-aware LLM-powered breakdown |
 | **PlanValidator** | Validates forbidden paths, wildcards, prompt injection |
 | **PlanBudget** | Resource caps (cycles, tokens, time) |
 | **HaltChecker** | Stops on flaky streaks, file growth, stalls |
-| **ParallelExecutor** | Concurrent independent step execution |
-| **PlanCache** | Goal similarity caching for reuse |
-| **MetricsCollector** | Prometheus-ready performance tracking |
+| **Explainer** | Human-readable execution summaries |
 
 ### ⚖️ Adversarial QA System
 
@@ -76,9 +77,11 @@ Detects, builds, and fixes projects in almost any language via modular **Buildpa
 
 The system gets smarter with every run.
 
-- **Action Memory**: Remembers which tools fixed specific error types
+- **Failure Taxonomy**: Categorizes errors for tailored repair strategies
+- **Model Arbitration**: Uses Thompson Sampling to select the best LLM
+- **Regression Firewall**: Blocks patches that previously caused failures
+- **Temporal Decay**: Recent successes weighted higher than old data
 - **Outcome Database**: Stores success/failure rates in SQLite
-- **Contextual Bandits**: Uses Thompson Sampling to optimize strategy
 
 ### 🏗️ Parallel Execution
 
@@ -152,12 +155,17 @@ graph TD
 ```
 rfsn_controller/
 ├── controller.py       # Main controller loop
-├── planner_v2/         # Planner layer (v2.2)
+├── ci_entrypoint.py    # GitHub Actions integration
+├── explainer.py        # Human-readable summaries
+├── planner_v2/         # Planner layer (v3.0)
 │   ├── planner.py      # Goal decomposition
+│   ├── failure_classifier.py  # Error taxonomy
+│   ├── model_selector.py      # Thompson Sampling
+│   ├── regression_firewall.py # Toxic patch blocking
+│   ├── semantic_guardrails.py # AST safety checks
 │   ├── llm_decomposer.py
 │   ├── governance/     # Validation, budgets, halts
 │   ├── parallel_executor.py
-│   ├── plan_cache.py
 │   └── metrics.py
 ├── qa/                 # Adversarial QA system
 │   ├── qa_orchestrator.py

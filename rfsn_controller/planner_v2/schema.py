@@ -291,6 +291,7 @@ class Step:
     verify: str = ""
     risk_level: RiskLevel = RiskLevel.LOW
     rollback_hint: str = ""
+    hypothesis: str = ""
     controller_task_spec: Optional[Dict[str, Any]] = None
     status: StepStatus = StepStatus.PENDING
     result: Optional[Dict[str, Any]] = None
@@ -309,6 +310,7 @@ class Step:
             "verify": self.verify,
             "risk_level": self.risk_level.value,
             "rollback_hint": self.rollback_hint,
+            "hypothesis": self.hypothesis,
             "controller_task_spec": self.controller_task_spec,
             "status": self.status.value,
             "result": self.result,
@@ -329,6 +331,7 @@ class Step:
             verify=data.get("verify", ""),
             risk_level=RiskLevel(data.get("risk_level", "LOW")),
             rollback_hint=data.get("rollback_hint", ""),
+            hypothesis=data.get("hypothesis", ""),
             controller_task_spec=data.get("controller_task_spec"),
             status=StepStatus(data.get("status", "PENDING")),
             result=data.get("result"),

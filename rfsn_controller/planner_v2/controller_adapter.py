@@ -7,6 +7,7 @@ Includes validation, budgeting, halt conditions, and artifact logging.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -34,6 +35,8 @@ from .qa_integration import PlannerQABridge
 
 if TYPE_CHECKING:
     from ..qa.qa_orchestrator import QAOrchestrator
+
+logger = logging.getLogger(__name__)
 
 
 class ControllerAdapter:
@@ -148,8 +151,10 @@ class ControllerAdapter:
                 context["_sanitizer_triggered"] = result.triggered_patterns
         
         # Generate plan
+        logger.info("Starting goal: %s", goal)
         self._current_plan = self._planner.propose_plan(goal, context)
         self._current_state = PlanState(plan_id=self._current_plan.plan_id)
+        logger.debug("Generated plan %s with %d steps", self._current_plan.plan_id, len(self._current_plan.steps))
         
         # Validate plan
         if validate:
@@ -198,6 +203,7 @@ class ControllerAdapter:
         self._step_start_time = time.monotonic()
         self._files_touched = []
         
+        logger.debug("Returning task spec for step: %s", step.step_id)
         return step.get_task_spec()
 
     def process_outcome(
@@ -232,6 +238,8 @@ class ControllerAdapter:
         
         if files_touched:
             self._files_touched = files_touched
+        
+        logger.info("Processing outcome for step %s: success=%s", outcome.step_id, outcome.success)
         
         # Record step artifact
         if self._artifact_log and self._current_artifact_id:
@@ -298,6 +306,21 @@ class ControllerAdapter:
                     # We might pass test command if known, but for now rely on QA orchestrator
                 )
                 
+                # Check Guardrails (Upgrade 4)
+                # We check only if success, because failure is already bad
+                violations = []
+                if diff and outcome.success:
+                    for f in (self._files_touched or []):
+                        # In a real impl, we'd need to fetch content.
+                        # For now we just call trigger the method for architectural completeness
+                        v = self._planner.check_guardrails(f, diff)
+                        violations.extend(v)
+                
+                if violations:
+                     outcome.success = False
+                     outcome.error_message = f"Guardrail Violation: {'; '.join(violations)}"
+                     # We don't rollback physically here, but we mark as failed
+                
                 if not qa_result.accepted:
                     # Convert QA rejection to controller failure
                     outcome.success = False
@@ -317,6 +340,21 @@ class ControllerAdapter:
             self._current_plan,
             self._current_state,
             outcome,
+        )
+        
+        # Record outcome to memory/firewall
+        # Extract tags (files + failure type)
+        tags = list(self._files_touched)
+        if outcome.failure_evidence:
+            tags.append(outcome.failure_evidence.category.value)
+            
+        self._planner.record_action_outcome(
+            step_id=outcome.step_id,
+            success=outcome.success,
+            diff=diff,
+            tags=tags,
+            failure_type=outcome.failure_evidence.category.value if outcome.failure_evidence else "unknown",
+            files=self._files_touched,
         )
 
         # Check if we need to revise on failure

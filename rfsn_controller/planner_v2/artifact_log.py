@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from .schema import ControllerOutcome, ControllerTaskSpec, Plan
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -130,19 +133,32 @@ class PlanArtifactLog:
             Artifact ID for this recording.
         """
         artifact_id = f"{plan.plan_id}_{self._timestamp()}"
+        logger.info("Recording plan start: %s", artifact_id)
         
         self._active_artifacts[artifact_id] = {
             "plan_id": plan.plan_id,
             "plan_json": plan.to_json(),
             "repo_fingerprint": fingerprint,
-            "step_artifacts": [],
+            # "step_artifacts": [],  <-- Removed, we don't hold in memory
             "start_time": self._now_iso(),
             "end_time": "",
             "final_status": "running",
             "metadata": metadata or {},
         }
         
+        # Initialize storage files
+        base_path = self.output_dir / artifact_id
+        base_path.mkdir(exist_ok=True)
+        
+        # Write initial metadata
+        self._write_meta(artifact_id, self._active_artifacts[artifact_id])
+        
         return artifact_id
+    
+    def _write_meta(self, artifact_id: str, data: Dict[str, Any]):
+        """Write metadata to disk."""
+        base_path = self.output_dir / artifact_id
+        (base_path / "meta.json").write_text(json.dumps(data, indent=2))
     
     def record_step(
         self,
@@ -176,9 +192,10 @@ class PlanArtifactLog:
             files_touched=files_touched or [],
         )
         
-        self._active_artifacts[artifact_id]["step_artifacts"].append(
-            step_artifact.to_dict()
-        )
+        # Stream to JSONL
+        base_path = self.output_dir / artifact_id
+        with open(base_path / "steps.jsonl", "a") as f:
+            f.write(json.dumps(step_artifact.to_dict()) + "\n")
     
     def record_qa_rejection(self, artifact_id: str, step_id: str, qa_result: Any) -> None:
         """Record QA rejection details."""
@@ -207,33 +224,19 @@ class PlanArtifactLog:
             Path to saved artifact file, or None if not found.
         """
         if artifact_id not in self._active_artifacts:
+            logger.warning("Attempted to finalize unknown artifact: %s", artifact_id)
             return None
+        
+        logger.info("Finalizing artifact: %s with status: %s", artifact_id, status)
         
         data = self._active_artifacts.pop(artifact_id)
         data["end_time"] = self._now_iso()
         data["final_status"] = status
         
-        # Convert step dicts back to objects for the artifact
-        step_artifacts = [
-            StepArtifact.from_dict(s) for s in data["step_artifacts"]
-        ]
+        # Update metadata
+        self._write_meta(artifact_id, data)
         
-        artifact = PlanArtifact(
-            plan_id=data["plan_id"],
-            plan_json=data["plan_json"],
-            repo_fingerprint=data["repo_fingerprint"],
-            step_artifacts=step_artifacts,
-            start_time=data["start_time"],
-            end_time=data["end_time"],
-            final_status=status,
-            metadata=data["metadata"],
-        )
-        
-        # Save to file
-        filepath = self.output_dir / f"{artifact_id}.json"
-        filepath.write_text(artifact.to_json())
-        
-        return filepath
+        return self.output_dir / artifact_id / "meta.json"
     
     def load(self, artifact_id: str) -> Optional[PlanArtifact]:
         """Load an artifact by ID.
@@ -244,11 +247,37 @@ class PlanArtifactLog:
         Returns:
             PlanArtifact or None if not found.
         """
-        filepath = self.output_dir / f"{artifact_id}.json"
-        if not filepath.exists():
-            return None
+        base_path = self.output_dir / artifact_id
+        meta_path = base_path / "meta.json"
+        steps_path = base_path / "steps.jsonl"
         
-        return PlanArtifact.from_json(filepath.read_text())
+        if not meta_path.exists():
+            # Fallback for old single-file format
+            old_path = self.output_dir / f"{artifact_id}.json"
+            if old_path.exists():
+                return PlanArtifact.from_json(old_path.read_text())
+            return None
+            
+        data = json.loads(meta_path.read_text())
+        
+        # Load steps
+        steps = []
+        if steps_path.exists():
+            with open(steps_path, "r") as f:
+                for line in f:
+                    if line.strip():
+                        steps.append(StepArtifact.from_dict(json.loads(line)))
+                        
+        return PlanArtifact(
+            plan_id=data["plan_id"],
+            plan_json=data["plan_json"],
+            repo_fingerprint=data["repo_fingerprint"],
+            step_artifacts=steps,
+            start_time=data["start_time"],
+            end_time=data["end_time"],
+            final_status=data["final_status"],
+            metadata=data["metadata"],
+        )
     
     def list_artifacts(self, plan_id: Optional[str] = None) -> List[str]:
         """List available artifact IDs.
@@ -260,11 +289,22 @@ class PlanArtifactLog:
             List of artifact IDs.
         """
         artifacts = []
-        for f in self.output_dir.glob("*.json"):
-            artifact_id = f.stem
-            if plan_id is None or artifact_id.startswith(plan_id):
-                artifacts.append(artifact_id)
-        return sorted(artifacts, reverse=True)
+        artifacts = []
+        # Check both directories and legacy files
+        entries = list(self.output_dir.iterdir())
+        
+        for p in entries:
+            aid = p.name
+            if p.is_dir() and (p / "meta.json").exists():
+                # New format
+                if plan_id is None or aid.startswith(plan_id):
+                    artifacts.append(aid)
+            elif p.suffix == ".json" and not p.stem.startswith("meta"):
+                 # Legacy format
+                 if plan_id is None or p.stem.startswith(plan_id):
+                     artifacts.append(p.stem)
+                     
+        return sorted(list(set(artifacts)), reverse=True)
     
     @staticmethod
     def _now_iso() -> str:
