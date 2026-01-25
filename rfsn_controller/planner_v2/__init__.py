@@ -106,6 +106,15 @@ from .plan_cache import CacheEntry, PlanCache
 # v2.2: Metrics
 from .metrics import MetricsCollector, PlannerMetrics, get_metrics_collector, reset_metrics
 
+# v2.3: Tool Contract Registry
+from .tool_registry import (
+    ToolCategory,
+    ToolContract,
+    ToolContractRegistry,
+    VerifyRecipe,
+    get_tool_registry,
+)
+
 __all__ = [
     # Schema
     "Step",
@@ -190,6 +199,12 @@ __all__ = [
     "MetricsCollector",
     "get_metrics_collector",
     "reset_metrics",
+    # v2.3: Tool Contract Registry
+    "ToolCategory",
+    "ToolContract",
+    "ToolContractRegistry", 
+    "VerifyRecipe",
+    "get_tool_registry",
 ]
 
 
