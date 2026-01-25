@@ -12,7 +12,7 @@ from .schema import ControllerOutcome, FailureCategory, FailureEvidence, Step
 
 if TYPE_CHECKING:
     from ..qa.qa_orchestrator import QAOrchestrator, QAResult
-    from ..qa.qa_types import Claim, ClaimType, Evidence, Verdict
+    from ..qa.qa_types import Claim
 
 
 @dataclass

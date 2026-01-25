@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol
+from typing import List, Optional, Protocol
 
 from .schema import ControllerOutcome, FailureCategory, FailureEvidence, Plan, RiskLevel, Step, StepStatus
 
@@ -208,14 +208,13 @@ class CompileErrorRevision(BaseRevisionStrategy):
             step_idx = plan.get_step_index(step.step_id)
             revised.steps.insert(step_idx, check_step)
             
-        else:
-            # Focus only on affected files
             if evidence.affected_files:
+                affected_file = evidence.affected_files[0] if evidence.affected_files else 'unknown'
                 self._update_step(
                     revised,
                     step.step_id,
                     allowed_files=evidence.affected_files[:3],
-                    intent=f"Fix error at line {evidence.error_line} in {evidence.affected_files[0] if evidence.affected_files else 'unknown'}",
+                    intent=f"Fix error at line {evidence.error_line} in {affected_file}",
                 )
         
         revised.version += 1
@@ -347,6 +346,7 @@ class RevisionStrategyRegistry:
             evidence = FailureEvidence(category=FailureCategory.UNKNOWN)
         
         strategy = self.get_strategy(evidence.category)
+        assert strategy is not None  # get_strategy always returns catch-all
         
         return strategy.revise(
             plan,

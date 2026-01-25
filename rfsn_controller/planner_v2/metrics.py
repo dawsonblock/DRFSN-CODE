@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
@@ -224,44 +223,44 @@ class MetricsCollector:
         """
         m = self._metrics
         lines = [
-            f"# HELP planner_plans_total Total plans generated",
-            f"# TYPE planner_plans_total counter",
+            "# HELP planner_plans_total Total plans generated",
+            "# TYPE planner_plans_total counter",
             f'planner_plans_total{{source="cache"}} {m.plans_from_cache}',
             f'planner_plans_total{{source="llm"}} {m.plans_from_llm}',
             f'planner_plans_total{{source="pattern"}} {m.plans_from_pattern}',
-            f"",
-            f"# HELP planner_steps_total Total steps executed",
-            f"# TYPE planner_steps_total counter",
+            "",
+            "# HELP planner_steps_total Total steps executed",
+            "# TYPE planner_steps_total counter",
             f'planner_steps_total{{status="success"}} {m.steps_succeeded}',
             f'planner_steps_total{{status="failed"}} {m.steps_failed}',
-            f"",
-            f"# HELP planner_revisions_total Total revisions",
-            f"# TYPE planner_revisions_total counter",
+            "",
+            "# HELP planner_revisions_total Total revisions",
+            "# TYPE planner_revisions_total counter",
             f"planner_revisions_total {m.revisions_total}",
-            f"",
-            f"# HELP planner_qa_evaluations_total Total QA evaluations",
-            f"# TYPE planner_qa_evaluations_total counter",
+            "",
+            "# HELP planner_qa_evaluations_total Total QA evaluations",
+            "# TYPE planner_qa_evaluations_total counter",
             f'planner_qa_evaluations_total{{status="accepted"}} {m.qa_evaluations - m.qa_rejections}',
             f'planner_qa_evaluations_total{{status="rejected"}} {m.qa_rejections}',
-            f"",
-            f"# HELP planner_parallel_batches_total Total parallel batches",
-            f"# TYPE planner_parallel_batches_total counter",
+            "",
+            "# HELP planner_parallel_batches_total Total parallel batches",
+            "# TYPE planner_parallel_batches_total counter",
             f"planner_parallel_batches_total {m.parallel_batches}",
-            f"",
-            f"# HELP planner_cache_hit_rate Cache hit rate",
-            f"# TYPE planner_cache_hit_rate gauge",
+            "",
+            "# HELP planner_cache_hit_rate Cache hit rate",
+            "# TYPE planner_cache_hit_rate gauge",
             f"planner_cache_hit_rate {m.cache_hit_rate:.4f}",
-            f"",
-            f"# HELP planner_step_success_rate Step success rate",
-            f"# TYPE planner_step_success_rate gauge",
+            "",
+            "# HELP planner_step_success_rate Step success rate",
+            "# TYPE planner_step_success_rate gauge",
             f"planner_step_success_rate {m.step_success_rate:.4f}",
-            f"",
-            f"# HELP planner_avg_plan_time_ms Average plan generation time",
-            f"# TYPE planner_avg_plan_time_ms gauge",
+            "",
+            "# HELP planner_avg_plan_time_ms Average plan generation time",
+            "# TYPE planner_avg_plan_time_ms gauge",
             f"planner_avg_plan_time_ms {m.avg_plan_time_ms:.2f}",
-            f"",
-            f"# HELP planner_avg_step_time_ms Average step execution time",
-            f"# TYPE planner_avg_step_time_ms gauge",
+            "",
+            "# HELP planner_avg_step_time_ms Average step execution time",
+            "# TYPE planner_avg_step_time_ms gauge",
             f"planner_avg_step_time_ms {m.avg_step_time_ms:.2f}",
         ]
         

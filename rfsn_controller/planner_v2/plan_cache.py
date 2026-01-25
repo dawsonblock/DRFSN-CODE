@@ -9,10 +9,13 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+
+if TYPE_CHECKING:
+    from .schema import Plan
 
 
 @dataclass
@@ -125,7 +128,7 @@ class PlanCache:
         best_match = None
         best_score = 0.0
         
-        for key, entry in self._memory_cache.items():
+        for _key, entry in self._memory_cache.items():
             # Check fingerprint first
             if repo_fingerprint and entry.repo_fingerprint:
                 if repo_fingerprint != entry.repo_fingerprint:
