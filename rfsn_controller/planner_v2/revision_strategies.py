@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Protocol
 
 from .schema import ControllerOutcome, FailureCategory, FailureEvidence, Plan, RiskLevel, Step, StepStatus
+from .tool_registry import get_tool_registry
 
 
 class RevisionStrategy(Protocol):
@@ -122,7 +123,9 @@ class TestRegressionRevision(BaseRevisionStrategy):
                     "failing_tests": evidence.top_failing_tests,
                     "hint": "Focus on fixing these specific tests",
                 },
+                status=StepStatus.PENDING,  # Reset for retry
             )
+            print(f"DEBUG: Updated step {step.step_id} to PENDING")
         elif failure_count == 2:
             # Reduce scope - focus on first failing test only
             if evidence.top_failing_tests:
@@ -131,7 +134,8 @@ class TestRegressionRevision(BaseRevisionStrategy):
                     step.step_id,
                     intent=f"Fix ONLY {evidence.top_failing_tests[0]}",
                     success_criteria=f"Test {evidence.top_failing_tests[0]} passes",
-                    verify=f"pytest {evidence.top_failing_tests[0]} -v",
+                    verify=get_tool_registry().get_tool("pytest").format_command(target=evidence.top_failing_tests[0]),
+                    status=StepStatus.PENDING,  # Reset for retry
                 )
         else:
             # Add isolation step
@@ -141,7 +145,9 @@ class TestRegressionRevision(BaseRevisionStrategy):
                 intent="Run failing test in isolation to understand dependencies",
                 allowed_files=step.allowed_files,
                 success_criteria="Test behavior understood",
-                verify=f"pytest {evidence.top_failing_tests[0] if evidence.top_failing_tests else ''} -v --tb=long",
+                verify=get_tool_registry().get_tool("pytest-focused").format_command(
+                    target=evidence.top_failing_tests[0] if evidence.top_failing_tests else ""
+                ),
                 risk_level=RiskLevel.LOW,
             )
             # Insert before the failing step
@@ -192,7 +198,7 @@ class CompileErrorRevision(BaseRevisionStrategy):
                 "stack_trace": evidence.stack_trace_head[:200],
                 "hint": "Fix the syntax/type error at the indicated line",
             }
-            self._update_step(revised, step.step_id, controller_task_spec=context_update)
+            self._update_step(revised, step.step_id, controller_task_spec=context_update, status=StepStatus.PENDING)
             
         elif failure_count == 2:
             # Add syntax check step
@@ -202,8 +208,11 @@ class CompileErrorRevision(BaseRevisionStrategy):
                 intent="Check that files compile before making changes",
                 allowed_files=evidence.affected_files or step.allowed_files,
                 success_criteria="All files have valid syntax",
-                verify=f"python -m py_compile {' '.join(evidence.affected_files[:3])}",
+                verify=get_tool_registry().get_tool("py-compile").format_command(
+                    target=" ".join(evidence.affected_files[:3])
+                ),
                 risk_level=RiskLevel.LOW,
+                status=StepStatus.PENDING,
             )
             step_idx = plan.get_step_index(step.step_id)
             revised.steps.insert(step_idx, check_step)
@@ -215,6 +224,7 @@ class CompileErrorRevision(BaseRevisionStrategy):
                     step.step_id,
                     allowed_files=evidence.affected_files[:3],
                     intent=f"Fix error at line {evidence.error_line} in {affected_file}",
+                    status=StepStatus.PENDING,
                 )
         
         revised.version += 1
@@ -253,11 +263,10 @@ class ImportErrorRevision(BaseRevisionStrategy):
             allowed_files=evidence.affected_files or step.allowed_files,
             success_criteria="All imports resolve correctly",
             verify="python -c 'import sys; sys.exit(0)'",
-            risk_level=RiskLevel.LOW,
             controller_task_spec={
-                "error_message": evidence.stack_trace_head[:200],
                 "hint": "Fix import statements or add missing __init__.py",
             },
+            status=StepStatus.PENDING,
         )
         
         step_idx = plan.get_step_index(step.step_id)
@@ -295,6 +304,7 @@ class ScopeReductionRevision(BaseRevisionStrategy):
                 step.step_id,
                 allowed_files=step.allowed_files[:1],
                 intent=f"Focus on: {step.allowed_files[0]}",
+                status=StepStatus.PENDING,  # Reset for retry
             )
         else:
             # Skip non-critical step

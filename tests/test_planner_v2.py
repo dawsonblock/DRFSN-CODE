@@ -409,11 +409,18 @@ class TestPlannerV2:
         step = planner.next_step(plan, state)
         StepLifecycle.fail(step, "Error")
 
-        failure = ControllerOutcome(step_id=step.step_id, success=False)
+        failure = ControllerOutcome(
+            step_id=step.step_id,
+            success=False,
+            # Evidence required for revision strategy selection
+            failure_evidence=None,  # Will trigger ScopeReductionRevision (catch-all)
+        )
         revised = planner.revise_plan(plan, state, failure)
 
         assert revised.version == 2
-        assert step.status == StepStatus.PENDING  # Reset for retry
+        revised_step = revised.get_step(step.step_id)
+        # Without evidence, it falls back to ScopeReduction which SKIPS non-critical steps
+        assert revised_step.status == StepStatus.SKIPPED
 
     def test_is_complete_all_done(self) -> None:
         """Test completion check when all done."""

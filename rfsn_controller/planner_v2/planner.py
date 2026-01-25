@@ -20,6 +20,11 @@ from .schema import (
     Step,
     StepStatus,
 )
+from .llm_decomposer import LLMDecomposer
+from .metrics import get_metrics_collector
+from .plan_cache import PlanCache
+from .revision_strategies import get_revision_registry
+from .parallel_executor import ParallelStepExecutor
 
 
 class PlannerV2:
@@ -48,6 +53,11 @@ class PlannerV2:
         """
         self._memory = memory_adapter or MemoryAdapter()
         self._seed = seed
+        self._revision = get_revision_registry()
+        self._metrics = get_metrics_collector()
+        self._llm = LLMDecomposer()
+        self._cache = PlanCache()
+        self._parallel_executor = ParallelStepExecutor()
 
     def _generate_plan_id(self, goal: str) -> str:
         """Generate deterministic plan ID.
@@ -116,6 +126,24 @@ class PlannerV2:
             )
             # Priors can be used to adjust step generation (future enhancement)
 
+        # 1. Check Cache
+        result = self._cache.get(goal, context)
+        if result:
+            cached, _ = result
+            self._metrics.record_plan_generated("cache", len(cached.steps), time_ms=0)
+            return cached
+
+        # 2. Try LLM
+        if self._llm:
+            plan = self._llm.decompose(goal, context, plan_id)
+            if plan:
+                self._metrics.record_plan_generated("llm", len(plan.steps), time_ms=0)
+                # Update cache on success (handled by controller adapter usually, but nice to have)
+                return plan
+
+        # 3. Fallback to Patterns
+        self._metrics.record_plan_generated("pattern", 0, time_ms=0)  # Count will be fixed in pattern call
+        
         if goal_type == "repair":
             return self._propose_repair_plan(plan_id, goal, context)
         elif goal_type == "feature":
@@ -496,20 +524,18 @@ class PlannerV2:
         if step is None:
             return plan
 
-        # Revision attempt 1: Reset step for retry
-        if step.failure_count == 1:
-            StepLifecycle.reset_for_retry(step)
-            state.revision_count += 1
-            state.consecutive_failures = 0
-            plan.version += 1
-            return plan
-
-        # Revision attempt 2: Skip if non-critical
-        if step.failure_count == 2 and StepLifecycle.can_skip(step):
-            StepLifecycle.skip(step, "Non-critical step failed twice")
-            state.revision_count += 1
-            plan.version += 1
-            return plan
+        # Use registry strategies
+        # 1. Update failure count
+        step.failure_count += 1
+        
+        # 2. Determine revision strategy
+        revised_plan = self._revision.revise(plan, step, failure)
+        
+        # 3. Record metrics if revision occurred (version changed)
+        if revised_plan.version > plan.version:
+            if failure.failure_evidence:
+                self._metrics.record_revision(failure.failure_evidence.category.value)
+            return revised_plan
 
         # No revision possible - plan will halt on next update
         return plan
@@ -554,8 +580,40 @@ class PlannerV2:
             "total_steps": len(plan.steps),
             "completed": len(state.completed_steps),
             "failed": len(state.failed_steps),
-            "revision_count": state.revision_count,
-            "halted": state.halted,
             "halt_reason": state.halt_reason,
             "is_complete": self.is_complete(plan, state),
         }
+
+    def get_parallel_batch(
+        self,
+        plan: Plan,
+        state: PlanState,
+        max_workers: int = 4,
+    ) -> List[Step]:
+        """Get the next batch of steps that can run in parallel.
+
+        Args:
+            plan: The current plan.
+            state: Current plan state.
+            max_workers: Max concurrent steps.
+
+        Returns:
+            List of steps to execute in parallel.
+        """
+        if state.halted:
+            return []
+
+        # Configure executor temporarily (or reuse instance)
+        self._parallel_executor._max_workers = max_workers
+        
+        batches = self._parallel_executor.find_parallel_batches(plan, state)
+        if batches:
+            # Return steps from the first batch
+            # We activate them immediately
+            steps = batches[0].steps
+            for step in steps:
+                StepLifecycle.activate(step)
+                # We don't set current_step_idx since there are multiple
+            return steps
+            
+        return []

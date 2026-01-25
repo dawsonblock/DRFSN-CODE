@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from .artifact_log import PlanArtifactLog
 from .fingerprint import RepoFingerprint, compute_fingerprint
@@ -27,10 +27,13 @@ from .planner import PlannerV2
 from .schema import (
     ControllerOutcome,
     ControllerTaskSpec,
-    FailureEvidence,
     Plan,
     PlanState,
 )
+from .qa_integration import PlannerQABridge
+
+if TYPE_CHECKING:
+    from ..qa.qa_orchestrator import QAOrchestrator
 
 
 class ControllerAdapter:
@@ -67,6 +70,8 @@ class ControllerAdapter:
         repo_dir: Optional[Path] = None,
         # Overrides
         override_file: Optional[Path] = None,
+        # QA
+        qa_orchestrator: Optional[QAOrchestrator] = None,
     ):
         """Initialize the controller adapter.
 
@@ -81,6 +86,7 @@ class ControllerAdapter:
             artifact_dir: Optional directory for artifact logging.
             repo_dir: Optional repo directory for fingerprinting.
             override_file: Optional JSON file for runtime overrides.
+            qa_orchestrator: Optional QA orchestrator for claim verification.
         """
         if planner is None:
             planner = PlannerV2(memory_adapter=memory_adapter, seed=seed)
@@ -104,6 +110,9 @@ class ControllerAdapter:
         
         # Overrides
         self._override_manager = OverrideManager(override_file)
+        
+        # QA Bridge
+        self._qa_bridge = PlannerQABridge(qa_orchestrator)
         
         # Step timing
         self._step_start_time: Optional[float] = None
@@ -252,7 +261,7 @@ class ControllerAdapter:
                 return None
         
         # Record for halt checker
-        is_flaky = (
+        is_flaky = bool(
             outcome.failure_evidence and 
             outcome.failure_evidence.category.value == "flaky_test"
         )
@@ -277,6 +286,31 @@ class ControllerAdapter:
             self._current_state.halt_reason = self._override_manager.get_halt_reason()
             self._finalize_artifact("manual_halt")
             return None
+        
+        # QA Verification
+        if outcome.success and self._qa_bridge.enabled:
+            step = self._current_plan.get_step(outcome.step_id)
+            if step:
+                qa_result = self._qa_bridge.verify_step_outcome(
+                    step, 
+                    outcome, 
+                    diff,
+                    # We might pass test command if known, but for now rely on QA orchestrator
+                )
+                
+                if not qa_result.accepted:
+                    # Convert QA rejection to controller failure
+                    outcome.success = False
+                    outcome.error_message = f"QA Rejected: {'; '.join(qa_result.rejection_reasons)}"
+                    outcome.failure_evidence = self._qa_bridge.convert_qa_to_failure_evidence(qa_result)
+                    
+                    # Log QA rejection
+                    if self._artifact_log and self._current_artifact_id:
+                        self._artifact_log.record_qa_rejection(
+                            self._current_artifact_id,
+                            step.step_id,
+                            qa_result
+                        )
         
         # Update state
         self._current_state = self._planner.update_state(
@@ -442,4 +476,40 @@ class ControllerAdapter:
         self._halt_checker = HaltChecker(self._halt_checker.spec)
         self._step_start_time = None
         self._files_touched = []
+
+    def get_parallel_tasks(self, max_workers: int = 4) -> List[ControllerTaskSpec]:
+        """Get the next batch of tasks that can run in parallel.
+        
+        Args:
+            max_workers: Maximum concurrent tasks.
+            
+        Returns:
+            List of task specs.
+        """
+        if self._current_plan is None or self._current_state is None:
+            raise ValueError("No active plan")
+            
+        # Check halt
+        if self._current_state.halted or self._override_manager.should_halt():
+            return []
+            
+        steps = self._planner.get_parallel_batch(
+            self._current_plan, 
+            self._current_state,
+            max_workers=max_workers,
+        )
+        
+        specs = []
+        for step in steps:
+            if self._override_manager.should_skip(step.step_id):
+                self._current_state.completed_steps.append(step.step_id)
+                continue
+                
+            step = self._override_manager.apply(step)
+            specs.append(step.get_task_spec())
+            
+        # Start timing (will be reset for each individual outcome process)
+        self._step_start_time = time.monotonic() 
+        
+        return specs
 

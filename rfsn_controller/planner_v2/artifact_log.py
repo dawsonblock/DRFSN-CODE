@@ -180,6 +180,22 @@ class PlanArtifactLog:
             step_artifact.to_dict()
         )
     
+    def record_qa_rejection(self, artifact_id: str, step_id: str, qa_result: Any) -> None:
+        """Record QA rejection details."""
+        if artifact_id not in self._active_artifacts:
+            return
+            
+        # Append to metadata
+        artifact_data = self._active_artifacts[artifact_id]
+        if "qa_rejections" not in artifact_data["metadata"]:
+            artifact_data["metadata"]["qa_rejections"] = []
+            
+        artifact_data["metadata"]["qa_rejections"].append({
+            "step_id": step_id,
+            "reasons": qa_result.rejection_reasons,
+            "timestamp": self._now_iso(),
+        })
+    
     def finalize(self, artifact_id: str, status: str) -> Optional[Path]:
         """Finalize and save the artifact.
         

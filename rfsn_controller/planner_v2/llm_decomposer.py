@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from .schema import Plan, RiskLevel, Step
+from .tool_registry import get_tool_registry
 
 
 @dataclass
@@ -149,6 +150,11 @@ class LLMDecomposer:
         Returns:
             Formatted prompt string.
         """
+        # Get allowed tools
+        registry = get_tool_registry()
+        tools = registry.list_tools()
+        tool_desc = "\\n".join([f"- {t.name}: {t.command_template} ({t.description})" for t in tools])
+        
         # Extract context values
         repo_type = context.get("repo_type", "unknown")
         language = context.get("language", "python")
@@ -176,7 +182,12 @@ class LLMDecomposer:
             max_steps=self._config.max_steps,
         )
         
-        return f"{DECOMPOSITION_SYSTEM_PROMPT}\n\n{user_prompt}"
+        system_prompt = DECOMPOSITION_SYSTEM_PROMPT.replace(
+            "6. Include verification commands where applicable",
+            f"6. Include verification commands where applicable. VALID TOOLS:\\n{tool_desc}"
+        )
+        
+        return f"{system_prompt}\\n\\n{user_prompt}"
     
     def _parse_llm_response(self, response: str) -> List[Dict[str, Any]]:
         """Parse LLM response into step dictionaries.
@@ -233,6 +244,11 @@ class LLMDecomposer:
             # Check for forbidden files
             for f in step.get("allowed_files", []):
                 if any(forbidden in f for forbidden in ["controller.py", "safety.py", ".env", "secrets/"]):
+                    return False
+            
+            # Check verification command validity
+            if self._config.require_verification and step.get("verify"):
+                if not get_tool_registry().validate_command(step["verify"]):
                     return False
         
         return True

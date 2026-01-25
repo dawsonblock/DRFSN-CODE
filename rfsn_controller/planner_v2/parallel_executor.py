@@ -238,7 +238,8 @@ class ParallelStepExecutor:
         
         async def run_all() -> List[ControllerOutcome]:
             tasks = [run_step(s) for s in steps]
-            return await asyncio.gather(*tasks, return_exceptions=True)
+            # Use return_exceptions=True to capture errors instead of raising
+            return await asyncio.gather(*tasks, return_exceptions=True) # type: ignore
         
         try:
             loop = asyncio.get_event_loop()
@@ -292,9 +293,9 @@ class ParallelExecutionConfig:
     def __init__(
         self,
         enabled: bool = True,
-        max_workers: int = 4,
+        max_workers: int = 8,  # Increased default
         min_batch_size: int = 2,
-        max_batch_size: int = 4,
+        max_batch_size: int = 8, # Increased default
         use_async: bool = False,
     ):
         self.enabled = enabled

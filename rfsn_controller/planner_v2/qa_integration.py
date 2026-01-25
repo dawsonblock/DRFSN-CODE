@@ -25,6 +25,7 @@ class StepQAResult:
     escalation_tags: List[str]
     should_revise: bool = False
     revision_hints: Dict[str, Any] = None
+    raw_result: Optional["QAResult"] = None
     
     def __post_init__(self):
         if self.revision_hints is None:
@@ -151,6 +152,7 @@ class PlannerQABridge:
                 escalation_tags=qa_result.escalation_tags,
                 should_revise=self._should_revise_based_on_qa(qa_result),
                 revision_hints=self._get_revision_hints(qa_result),
+                raw_result=qa_result,
             )
             
         except Exception as e:
@@ -211,16 +213,22 @@ class PlannerQABridge:
     
     def convert_qa_to_failure_evidence(
         self,
-        qa_result: "QAResult",
+        step_result: "StepQAResult",
     ) -> FailureEvidence:
         """Convert QA rejection to FailureEvidence for revision.
         
         Args:
-            qa_result: QA evaluation result.
+            step_result: QA evaluation result wrapper.
             
         Returns:
             FailureEvidence for revision strategies.
         """
+        qa_result = step_result.raw_result
+        if not qa_result:
+            return FailureEvidence(
+                category=FailureCategory.UNKNOWN,
+                suggestion="QA Rejected (no details)",
+            )
         from ..qa.qa_types import ClaimType
         
         # Determine category from rejection type
