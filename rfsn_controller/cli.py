@@ -328,9 +328,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--planner-mode",
-        default="off",
-        choices=["off", "dag"],
-        help="Planner mode: off or dag (DAG-based execution)",
+        default="v2",
+        choices=["off", "v2", "dag"],
+        help="Planner mode: v2 (recommended) or off. 'dag' is deprecated.",
     )
     parser.add_argument(
         "--repo-index",

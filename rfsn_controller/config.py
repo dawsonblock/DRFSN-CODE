@@ -109,10 +109,13 @@ class ControllerConfig:
     policy_mode: Literal["off", "bandit"] = "off"
     
     # Planning
-    planner_mode: Literal["off", "dag"] = "off"
+    planner_mode: Literal["off", "v2", "dag"] = "v2"
     
     # Repo indexing
     repo_index_mode: Literal["off", "on"] = "off"
+    
+    # State directory (unified learning + audit)
+    state_dir: str = ".rfsn"
     
     # Determinism
     seed: int = 1337

@@ -15,6 +15,7 @@ import os
 import random
 from dataclasses import dataclass, field
 from datetime import timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .action_outcome_memory import (
@@ -494,6 +495,11 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
     try:
         sb = create_sandbox(run_id=run_id)
         log_dir = sb.root  # write logs next to sandbox for inspection
+        
+        # === UNIFIED STATE DIRECTORY ===
+        state_dir = getattr(cfg, "state_dir", ".rfsn")
+        state_root = Path(state_dir)
+        state_root.mkdir(parents=True, exist_ok=True)
 
         def log(rec: Dict[str, Any]) -> None:
             write_jsonl(log_dir, rec, clock=clock)
@@ -630,7 +636,9 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         elite_planner = None  # Will be initialized after context is set up
         elite_planner_enabled = cfg.planner_mode == "dag"
         if elite_planner_enabled:
-            log({"phase": "elite_planner_init", "mode": cfg.planner_mode, "status": "deferred"})
+            raise RuntimeError(
+                "Legacy DAG planner is deprecated. Use --planner-mode v2 instead."
+            )
 
         # === PLANNER V2: High-level goal decomposition ===
         planner_v2_adapter = None

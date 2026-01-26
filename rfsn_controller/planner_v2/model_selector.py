@@ -7,11 +7,10 @@ to selecting the best LLM for a given task context (language, failure type).
 from __future__ import annotations
 
 import json
-import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Protocol
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -53,8 +52,13 @@ class ModelStats:
 class ModelSelector:
     """Selects the best model using Thompson Sampling."""
     
-    def __init__(self, storage_path: Optional[Path] = None):
+    def __init__(
+        self,
+        storage_path: Optional[Path] = None,
+        events_path: Optional[Path] = None,
+    ):
         self._storage_path = storage_path
+        self._events_path = events_path
         self._models: Dict[str, ModelOption] = {}
         # Map context_key -> model_id -> ModelStats
         self._stats: Dict[str, Dict[str, ModelStats]] = {}
@@ -62,6 +66,37 @@ class ModelSelector:
         self._register_defaults()
         if storage_path and storage_path.exists():
             self._load()
+        
+        # Ingest controller events if available
+        if events_path and events_path.exists():
+            self._ingest_events()
+    
+    def _ingest_events(self):
+        """Ingest events from controller to update model priors."""
+        if not self._events_path or not self._events_path.exists():
+            return
+            
+        try:
+            with open(self._events_path, "r") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    evt = json.loads(line)
+                    model_id = evt.get("model")
+                    language = evt.get("language", "unknown")
+                    failure_type = evt.get("failure_type", "UNKNOWN")
+                    success = evt.get("success", False)
+                    
+                    if model_id:
+                        self.record_outcome(
+                            model_id=model_id,
+                            goal_type="repair",
+                            failure_type=failure_type,
+                            language=language,
+                            success=success,
+                        )
+        except Exception:
+            pass  # Ignore corrupt events
 
     def _register_defaults(self):
         """Register default models."""
