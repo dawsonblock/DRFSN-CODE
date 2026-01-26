@@ -595,6 +595,32 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         winner_diff: Optional[str] = None
         feature_summary = None  # Store feature summary for evidence pack
         feature_summary = None  # Store feature summary for evidence pack
+        
+        # Event emission helper for model arbitration learning
+        events_file_path = state_root / "events.jsonl"
+        
+        def emit_model_event(
+            model: str,
+            language: str,
+            failure_type: str,
+            success: bool,
+        ) -> None:
+            """Emit a model arbitration event for learning."""
+            import json as json_mod
+            from datetime import datetime as dt_mod
+            event = {
+                "timestamp": dt_mod.utcnow().isoformat(),
+                "model": model,
+                "language": language,
+                "failure_type": failure_type,
+                "success": success,
+                "seed": cfg.seed,
+            }
+            try:
+                with open(events_file_path, "a") as f:
+                    f.write(json_mod.dumps(event) + "\n")
+            except Exception:
+                pass  # Don't fail run for event emission
         log(
             {
                 "phase": "run_header",
@@ -646,10 +672,31 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
         if planner_v2_enabled:
             try:
                 from .planner_v2 import ControllerAdapter, MemoryAdapter, PlannerV2
+                from .planner_v2.model_selector import ModelSelector
+                
                 planner_memory = MemoryAdapter(memory_store) if memory_store else MemoryAdapter()
-                planner_v2 = PlannerV2(memory_adapter=planner_memory, seed=cfg.seed)
+                
+                # Wire ModelSelector with unified state paths
+                model_stats_path = state_root / "planner_model_stats.json"
+                events_path = state_root / "events.jsonl"
+                model_selector = ModelSelector(
+                    storage_path=model_stats_path,
+                    events_path=events_path,
+                )
+                
+                planner_v2 = PlannerV2(
+                    memory_adapter=planner_memory,
+                    seed=cfg.seed,
+                    model_selector=model_selector,
+                )
                 planner_v2_adapter = ControllerAdapter(planner=planner_v2)
-                log({"phase": "planner_v2_init", "mode": cfg.planner_mode, "status": "ready"})
+                log({
+                    "phase": "planner_v2_init",
+                    "mode": cfg.planner_mode,
+                    "status": "ready",
+                    "model_stats_path": str(model_stats_path),
+                    "events_path": str(events_path),
+                })
             except ImportError as e:
                 log({"phase": "planner_v2_init", "error": str(e)})
                 planner_v2_enabled = False
@@ -2022,6 +2069,14 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                             # Apply winner to main repo
                             apply_patch(sb, getattr(winner, "diff", ""))
                             winner_diff = getattr(winner, "diff", "")
+                            
+                            # Emit success event for model learning
+                            emit_model_event(
+                                model=cfg.model,
+                                language=detected_language or "unknown",
+                                failure_type="REPAIR",
+                                success=True,
+                            )
 
                         # In feature mode, progress through subgoals ONLY if patch is successful
                         # The winner patch passed verification, so we can mark current subgoal as complete
@@ -2061,6 +2116,14 @@ def run_controller(cfg: ControllerConfig) -> Dict[str, Any]:
                         # Update patch budget controller with failure
                         patch_budget.record_attempt(
                             failing_tests=set(v.failing_tests),
+                            success=False,
+                        )
+                        
+                        # Emit failure event for model learning
+                        emit_model_event(
+                            model=cfg.model,
+                            language=detected_language or "unknown",
+                            failure_type="REPAIR",
                             success=False,
                         )
                         

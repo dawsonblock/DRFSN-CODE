@@ -48,12 +48,14 @@ class PlannerV2:
         self,
         memory_adapter: Optional[MemoryAdapter] = None,
         seed: int = 0,
+        model_selector: Optional[ModelSelector] = None,
     ):
         """Initialize the planner.
 
         Args:
             memory_adapter: Optional memory adapter for historical queries.
             seed: Seed for deterministic plan ID generation.
+            model_selector: Optional ModelSelector for learned model arbitration.
         """
         self._memory = memory_adapter or MemoryAdapter()
         self._seed = seed
@@ -62,7 +64,7 @@ class PlannerV2:
         self._cache = PlanCache()
         self._parallel_executor = ParallelStepExecutor()
         self._classifier = FailureClassifier()
-        self._model_selector = ModelSelector() # Persistence would be injected here
+        self._model_selector = model_selector or ModelSelector()
         self._firewall = RegressionFirewall()
         self._guardrails = SemanticGuardrails()
         self._llm = LLMDecomposer(model_selector=self._model_selector)
