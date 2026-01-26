@@ -1,9 +1,9 @@
 # 🚀 RFSN Controller "Ultimate Build"
 
-> **Autonomous. Resilient. Polyglot.**
-> The next-generation coding agent that fixes bugs across languages using a multi-model ensemble.
+> **Autonomous. Resilient. Self-Learning.**
+> The next-generation coding agent that fixes bugs across languages using a unified multi-model ensemble with learned arbitration.
 
-The **RFSN Controller** is an advanced autonomous repair agent designed to ingest GitHub repositories, detect bugs, and patch them without human intervention. This "Ultimate Build" introduces active-active model fallback, broad language support, a structured planner layer, and adversarial QA.
+The **RFSN Controller** is an advanced autonomous repair agent designed to ingest GitHub repositories, detect bugs, and patch them without human intervention. This "Ultimate Build" features **unified learning pipelines**, **self-improving model selection**, and **CI-ready execution**.
 
 ---
 
@@ -73,15 +73,24 @@ Detects, builds, and fixes projects in almost any language via modular **Buildpa
 | **Rust** | `rust_pack.py` | cargo build, cargo test |
 | **Java** | `java_pack.py` | maven, gradle |
 
-### ⚡ Active Learning Memory
+### ⚡ Unified Learning System ⭐ NEW
 
-The system gets smarter with every run.
+The system gets smarter with every run through a **unified state directory**.
 
+- **Cross-System Learning**: Controller outcomes feed directly into planner model selection
+- **Event Emission**: Every patch success/failure emits to `.rfsn/events.jsonl`
 - **Failure Taxonomy**: Categorizes errors for tailored repair strategies
-- **Model Arbitration**: Uses Thompson Sampling to select the best LLM
+- **Model Arbitration**: Thompson Sampling selects the best LLM per context
 - **Regression Firewall**: Blocks patches that previously caused failures
 - **Temporal Decay**: Recent successes weighted higher than old data
-- **Outcome Database**: Stores success/failure rates in SQLite
+
+```bash
+# All learning data lives in one place
+.rfsn/
+├── events.jsonl              # Model arbitration events
+├── planner_model_stats.json  # Thompson Sampling priors
+└── learning.db               # SQLite outcome database
+```
 
 ### 🏗️ Parallel Execution
 
@@ -109,18 +118,24 @@ pip install -r requirements.txt
 ### Usage
 
 ```bash
-# Standard repair mode
+# Planner v2 is now the default!
 python -m rfsn_controller.main \
-  --github-url https://github.com/YourUser/YourRepo \
-  --max-steps 20 \
+  --repo https://github.com/YourUser/YourRepo \
+  --test "pytest -q"
+
+# With parallel patch evaluation
+python -m rfsn_controller.main \
+  --repo https://github.com/YourUser/YourRepo \
+  --parallel-patches \
   --ensemble-mode
 
-# With Planner v2 mode
+# Disable planner for legacy mode
 python -m rfsn_controller.main \
-  --github-url https://github.com/YourUser/YourRepo \
-  --planner-mode v2 \
-  --parallel-patches
+  --repo https://github.com/YourUser/YourRepo \
+  --planner-mode off
 ```
+
+> **Note**: `--planner-mode dag` is deprecated and will raise an error.
 
 ---
 
